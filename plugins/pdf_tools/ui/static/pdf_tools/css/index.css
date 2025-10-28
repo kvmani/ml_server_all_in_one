@@ -1,0 +1,113 @@
+.pdf-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.panel {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.panel__header h3 {
+  margin: 0;
+}
+
+.merge-controls,
+.merge-actions,
+.split-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.output-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.output-name input,
+.merge-entry input[type="text"],
+.split-controls input[type="file"] {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+  padding: 0.5rem;
+}
+
+.merge-entries {
+  display: grid;
+  gap: 1rem;
+}
+
+.merge-entry {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.merge-entry__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.merge-entry__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.merge-entry__actions button {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+}
+
+.merge-entry__preview {
+  border-radius: 8px;
+  overflow: hidden;
+  max-height: 360px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.merge-entry__preview iframe {
+  width: 100%;
+  height: 360px;
+  border: 0;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.status {
+  min-height: 1.25rem;
+  color: #9aa3b5;
+}
+
+#split-results ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+#split-results button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Home · ML Server AIO{% endblock %}
+{% block content %}
+<section class="grid">
+  {% for plugin in plugins %}
+    <article class="card">
+      <h2>{{ plugin.title }}</h2>
+      <p>{{ plugin.summary }}</p>
+      <a class="btn" href="{{ url_for(plugin.blueprint + '.index') }}">Open</a>
+    </article>
+  {% else %}
+    <p class="empty">No tools available.</p>
+  {% endfor %}
+</section>
+{% endblock %}
