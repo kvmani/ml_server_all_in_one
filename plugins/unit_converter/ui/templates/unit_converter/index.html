@@ -16,13 +16,13 @@
         <p class="tool-card__category">General Utilities</p>
         <h1 id="unit-converter-title" class="section-heading">Scientific unit converter</h1>
         <p>
-          Convert between laboratory units with instant validation. Choose a category, select source and destination units, and
-          obtain precision-controlled results without leaving the offline workspace.
+          Convert between laboratory units, inspect base quantities, and validate interval calculations without leaving the offline workspace.
+          Choose a unit family, configure precision and notation, and view the converted value alongside the base SI representation.
         </p>
         <ul>
-          <li>Categories include length, mass, temperature, energy, and more</li>
-          <li>Keyboard-friendly navigation with real-time feedback</li>
-          <li>Results are formatted to four decimal places for consistency</li>
+          <li>Unit registry powered by Pint with engineering materials presets</li>
+          <li>Toggle between absolute and interval temperature conversions</li>
+          <li>Evaluate composite expressions such as <code>5 kJ/mol to eV</code></li>
         </ul>
         <div class="tool-shell__actions">
           <a class="btn btn--subtle" data-keep-theme href="{{ help_href }}">Read conversion guide</a>
@@ -33,32 +33,64 @@
         <form id="converter-form" class="surface-muted form-grid" novalidate>
           <div class="input-grid">
             <div class="form-field">
-              <label class="form-field__label" for="category">
-                Measurement category
-                <button type="button" class="tooltip-trigger" data-tooltip="Determines the conversion table that will be used. Each category includes compatible units only." aria-label="Category help">?</button>
+              <label class="form-field__label" for="family">
+                Unit family
+                <button type="button" class="tooltip-trigger" data-tooltip="Families group compatible dimensions (e.g. mass, pressure)." aria-label="Unit family help">?</button>
               </label>
-              <select id="category" name="category">
-                {% for category in units %}
-                  <option value="{{ category }}">{{ category|capitalize }}</option>
+              <select id="family" name="family" required>
+                {% for family in families %}
+                  <option value="{{ family }}">{{ family.replace('_', ' ')|title }}</option>
                 {% endfor %}
               </select>
             </div>
             <div class="form-field">
               <label class="form-field__label" for="value">
                 Value
-                <button type="button" class="tooltip-trigger" data-tooltip="Enter any numeric quantity. Decimals and scientific notation are supported." aria-label="Value help">?</button>
+                <button type="button" class="tooltip-trigger" data-tooltip="Enter a numeric quantity using decimal or scientific notation." aria-label="Value help">?</button>
               </label>
-              <input id="value" name="value" type="number" step="any" inputmode="decimal" required>
+              <input id="value" name="value" type="text" inputmode="decimal" autocomplete="off" required>
             </div>
             <div class="form-field">
               <label class="form-field__label" for="from-unit">From unit</label>
-              <select id="from-unit" name="from_unit"></select>
+              <select id="from-unit" name="from_unit" required></select>
+              <p class="form-field__hint" id="from-hint"></p>
             </div>
             <div class="form-field">
               <label class="form-field__label" for="to-unit">To unit</label>
-              <select id="to-unit" name="to_unit"></select>
+              <select id="to-unit" name="to_unit" required></select>
+              <p class="form-field__hint" id="to-hint"></p>
             </div>
           </div>
+
+          <div class="input-grid">
+            <div class="form-field">
+              <label class="form-field__label" for="mode">Conversion mode</label>
+              <select id="mode" name="mode">
+                <option value="absolute">Absolute (default)</option>
+                <option value="interval">Interval / delta</option>
+              </select>
+              <p class="form-field__hint">Interval mode keeps offsets for temperature differences.</p>
+            </div>
+            <div class="form-field">
+              <label class="form-field__label" for="sig-figs">Significant figures</label>
+              <input id="sig-figs" name="sig_figs" type="number" min="1" max="12" step="1" placeholder="e.g. 4">
+              <p class="form-field__hint">Leave blank to auto-select.</p>
+            </div>
+            <div class="form-field">
+              <label class="form-field__label" for="decimals">Fixed decimals</label>
+              <input id="decimals" name="decimals" type="number" min="0" max="12" step="1" placeholder="e.g. 3">
+              <p class="form-field__hint">Overrides significant figures when set.</p>
+            </div>
+            <div class="form-field">
+              <label class="form-field__label" for="notation">Notation</label>
+              <select id="notation" name="notation">
+                <option value="auto">Automatic</option>
+                <option value="scientific">Scientific</option>
+                <option value="engineering">Engineering</option>
+              </select>
+            </div>
+          </div>
+
           <div class="form-actions">
             <button class="btn" type="submit">Convert value</button>
             <button class="btn btn--ghost" type="reset" id="converter-reset">Reset</button>
@@ -69,7 +101,46 @@
         <section class="surface-muted" aria-live="polite" id="converter-output" hidden>
           <h2 class="form-section__title">Conversion result</h2>
           <p id="result" class="section-heading"></p>
-          <p class="form-field__hint">Results are rounded to four decimal places.</p>
+          <p id="base" class="form-field__hint"></p>
+        </section>
+
+        <section class="surface-muted" aria-labelledby="expression-title">
+          <h2 id="expression-title" class="form-section__title">Evaluate unit expression</h2>
+          <form id="expression-form" class="form-grid" novalidate>
+            <div class="input-grid">
+              <div class="form-field">
+                <label class="form-field__label" for="expression">
+                  Expression
+                  <button type="button" class="tooltip-trigger" data-tooltip="Examples: '5 kJ/mol to eV', '1.2e6 Pa to bar', or '980 cm^3 * 7 g/cm^3 to kilogram'." aria-label="Expression help">?</button>
+                </label>
+                <input id="expression" name="expression" placeholder="e.g. 5 kJ/mol to eV" required autocomplete="off">
+              </div>
+              <div class="form-field">
+                <label class="form-field__label" for="expression-target">Target unit (optional)</label>
+                <input id="expression-target" name="target" placeholder="Only needed if expression omits 'to <unit>'">
+              </div>
+              <div class="form-field">
+                <label class="form-field__label" for="expression-notation">Notation</label>
+                <select id="expression-notation" name="notation">
+                  <option value="auto">Automatic</option>
+                  <option value="scientific">Scientific</option>
+                  <option value="engineering">Engineering</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label class="form-field__label" for="expression-sig-figs">Significant figures</label>
+                <input id="expression-sig-figs" name="sig_figs" type="number" min="1" max="12" step="1">
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="btn" type="submit">Evaluate expression</button>
+              <button class="btn btn--ghost" type="reset" id="expression-reset">Reset</button>
+            </div>
+            <p class="status-text" data-role="status" aria-live="polite"></p>
+          </form>
+          <div id="expression-output" hidden aria-live="polite">
+            <p class="section-heading" id="expression-result"></p>
+          </div>
         </section>
       </div>
     </div>
@@ -79,31 +150,59 @@
 <script type="module">
   import { bindForm } from '/static/js/core.js';
   const units = {{ units|tojson }};
-  const category = document.getElementById('category');
+
+  function formatAliases(aliases) {
+    if (!aliases || aliases.length === 0) {
+      return '';
+    }
+    return `Also accepts: ${aliases.join(', ')}`;
+  }
+
+  const familySelect = document.getElementById('family');
   const fromUnit = document.getElementById('from-unit');
   const toUnit = document.getElementById('to-unit');
+  const fromHint = document.getElementById('from-hint');
+  const toHint = document.getElementById('to-hint');
   const resultEl = document.getElementById('result');
+  const baseEl = document.getElementById('base');
   const outputSection = document.getElementById('converter-output');
   const resetButton = document.getElementById('converter-reset');
 
-  function populate(unitsList) {
-    fromUnit.innerHTML = '';
-    toUnit.innerHTML = '';
-    unitsList.forEach((unit) => {
-      const option1 = document.createElement('option');
-      option1.value = unit;
-      option1.textContent = unit;
-      fromUnit.appendChild(option1);
-      const option2 = option1.cloneNode(true);
-      toUnit.appendChild(option2);
+  function populateUnitSelect(select, items) {
+    select.innerHTML = '';
+    items.forEach((item) => {
+      const option = document.createElement('option');
+      option.value = item.symbol;
+      option.textContent = item.symbol;
+      option.dataset.aliases = item.aliases.join(', ');
+      option.dataset.dimension = item.dimension;
+      select.appendChild(option);
     });
-    toUnit.selectedIndex = Math.min(1, unitsList.length - 1);
   }
 
-  populate(units[category.value]);
-  category.addEventListener('change', () => {
-    populate(units[category.value]);
-  });
+  function updateHints() {
+    const fromOption = fromUnit.selectedOptions[0];
+    const toOption = toUnit.selectedOptions[0];
+    fromHint.textContent = fromOption && fromOption.dataset.aliases ? formatAliases(fromOption.dataset.aliases.split(', ').filter(Boolean)) : '';
+    toHint.textContent = toOption && toOption.dataset.aliases ? formatAliases(toOption.dataset.aliases.split(', ').filter(Boolean)) : '';
+  }
+
+  function refreshUnits() {
+    const family = familySelect.value;
+    const items = units[family] || [];
+    populateUnitSelect(fromUnit, items);
+    populateUnitSelect(toUnit, items);
+    if (toUnit.options.length > 1) {
+      toUnit.selectedIndex = 1;
+    }
+    updateHints();
+  }
+
+  familySelect.addEventListener('change', refreshUnits);
+  fromUnit.addEventListener('change', updateHints);
+  toUnit.addEventListener('change', updateHints);
+
+  refreshUnits();
 
   const form = document.getElementById('converter-form');
   const controller = bindForm(form, {
@@ -111,14 +210,21 @@
     successText: 'Conversion complete',
     async onSubmit() {
       const payload = {
-        value: parseFloat(form.value.value),
-        category: form.category.value,
+        value: form.value.value.trim(),
         from_unit: form['from_unit'].value,
         to_unit: form['to_unit'].value,
+        mode: form.mode.value,
       };
-      if (Number.isNaN(payload.value)) {
-        throw new Error('Enter a numeric value');
+      if (!payload.value) {
+        throw new Error('Enter a value to convert');
       }
+      if (form.sig_figs.value) {
+        payload.sig_figs = Number.parseInt(form.sig_figs.value, 10);
+      }
+      if (form.decimals.value) {
+        payload.decimals = Number.parseInt(form.decimals.value, 10);
+      }
+      payload.notation = form.notation.value;
       const response = await fetch('/unit_converter/api/v1/convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -128,7 +234,8 @@
       if (!response.ok) {
         throw new Error(data.error || 'Conversion failed');
       }
-      resultEl.textContent = `${payload.value} ${payload.from_unit} = ${data.result.toFixed(4)} ${payload.to_unit}`;
+      resultEl.textContent = `${payload.value} ${payload.from_unit} = ${data.formatted} ${data.unit}`;
+      baseEl.textContent = `Base quantity: ${data.base.value.toPrecision(6)} ${data.base.unit}`;
       outputSection.hidden = false;
     },
   });
@@ -137,9 +244,51 @@
 
   resetButton.addEventListener('click', () => {
     form.reset();
-    populate(units[category.value]);
+    refreshUnits();
     outputSection.hidden = true;
     controller.setStatus('Ready', 'info');
+  });
+
+  const expressionForm = document.getElementById('expression-form');
+  const expressionResult = document.getElementById('expression-result');
+  const expressionOutput = document.getElementById('expression-output');
+  const expressionReset = document.getElementById('expression-reset');
+
+  const expressionController = bindForm(expressionForm, {
+    pendingText: 'Evaluating…',
+    successText: 'Expression evaluated',
+    async onSubmit() {
+      const payload = {
+        expression: expressionForm.expression.value.trim(),
+        target: expressionForm.target.value.trim() || undefined,
+        notation: expressionForm['expression-notation'].value,
+      };
+      if (!payload.expression) {
+        throw new Error('Enter an expression to evaluate');
+      }
+      if (expressionForm['expression-sig-figs'].value) {
+        payload.sig_figs = Number.parseInt(expressionForm['expression-sig-figs'].value, 10);
+      }
+      const response = await fetch('/unit_converter/api/v1/expressions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Expression evaluation failed');
+      }
+      expressionResult.textContent = `${payload.expression} → ${data.formatted} ${data.unit}`;
+      expressionOutput.hidden = false;
+    },
+  });
+
+  expressionController.setStatus('Evaluate combined expressions without extra requests', 'info');
+
+  expressionReset.addEventListener('click', () => {
+    expressionForm.reset();
+    expressionOutput.hidden = true;
+    expressionController.setStatus('Ready', 'info');
   });
 </script>
 {% endblock %}

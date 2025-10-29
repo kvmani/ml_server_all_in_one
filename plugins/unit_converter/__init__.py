@@ -2,7 +2,7 @@
 
 manifest = {
     "title": "Unit Converter",
-    "summary": "Convert between scientific units with instant validation.",
+    "summary": "Pint-backed conversions with interval support, expression evaluation, and configurable precision.",
     "blueprint": "unit_converter",
     "category": "General Utilities",
     "icon": "img/UnitConverter_icon.png",

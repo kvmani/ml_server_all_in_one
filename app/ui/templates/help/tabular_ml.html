@@ -6,34 +6,34 @@
     <header>
       <p class="tool-card__category">Machine learning</p>
       <h1 id="tabular-help-title" class="section-heading">Tabular ML guidance</h1>
-      <p class="hero__subtitle">Train offline models on CSV datasets with automatic task detection and feature importance reporting.</p>
+      <p class="hero__subtitle">Train offline models on CSV datasets with dataset profiling, scatter plots, and automatic task detection.</p>
     </header>
 
     <article class="surface-muted help-section">
       <h2>Preparing datasets</h2>
       <ul class="list-reset">
-        <li>Ensure the first row contains column headers; the target column must match the header exactly.</li>
-        <li>Clean missing values before upload—the tool currently drops rows with nulls to keep inference deterministic.</li>
-        <li>Limit file size to {{ upload.get('max_mb', 2) }} MB for responsive processing.</li>
+        <li>Ensure the first row contains column headers; the target column name must match one of the headers exactly.</li>
+        <li>Only numeric feature columns are used for training. Categorical predictors should be encoded before upload.</li>
+        <li>File size is capped at {{ upload.get('max_mb', 2) }} MB to guarantee sub-second parsing in the air-gapped environment.</li>
       </ul>
     </article>
 
     <article class="surface-muted help-section">
-      <h2>Training workflow</h2>
+      <h2>Workflow</h2>
       <ol>
-        <li>Upload the CSV and confirm the detected filename in the status banner.</li>
-        <li>Specify the target column. The backend infers whether to run classification (categorical target) or regression.</li>
-        <li>Submit the form to train a lightweight scikit-learn model. Metrics and top feature importances appear in the results panel.</li>
-        <li>Reset the workspace to experiment with alternative targets or preprocessed datasets.</li>
+        <li>Upload the CSV. A preview table and column summary appear once the dataset is cached in memory.</li>
+        <li>Use the scatter plot form to explore numeric relationships. Choose optional colour encodings to highlight clusters.</li>
+        <li>Provide the target column and start training. The backend infers classification vs. regression automatically.</li>
+        <li>Review metrics and top features, then clear the dataset to load a new file.</li>
       </ol>
     </article>
 
     <article class="surface-muted help-section">
-      <h2>Interpreting results</h2>
+      <h2>Reading the results</h2>
       <ul class="list-reset">
-        <li><strong>Metrics:</strong> Classification reports accuracy and macro F1; regression reports R<sup>2</sup> and MAE.</li>
-        <li><strong>Feature importance:</strong> Derived from tree-based estimators; values are normalised to sum to 1.0.</li>
-        <li>Use the CSV of feature weights (download button in the UI) for lab notebooks or QA records.</li>
+        <li><strong>Metrics:</strong> Classification reports accuracy; regression reports root-mean-square error (RMSE).</li>
+        <li><strong>Feature importance:</strong> Derived from the absolute model coefficients after standard scaling. Values are sorted descending and shown for the top five features.</li>
+        <li>Scatter plots are rendered with inline SVG; use browser zoom or theme toggle for presentation-ready captures.</li>
       </ul>
     </article>
   </section>

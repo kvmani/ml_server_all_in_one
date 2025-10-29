@@ -2,6 +2,120 @@
   gap: clamp(1.75rem, 2vw, 2.5rem);
 }
 
+.tabular-overview {
+  display: grid;
+  gap: clamp(1.5rem, 2vw, 2rem);
+}
+
+.tabular-overview__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.tabular-overview__grid {
+  display: grid;
+  gap: clamp(1.25rem, 1.5vw, 1.75rem);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.preview-table {
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow-x: auto;
+}
+
+.preview-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.preview-table th,
+.preview-table td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.preview-table thead th {
+  text-align: left;
+  font-weight: 600;
+  background: rgba(17, 28, 51, 0.45);
+}
+
+.tabular-columns {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tabular-columns__item {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  background: rgba(17, 28, 51, 0.4);
+}
+
+.tabular-columns__name {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.tabular-columns__dtype {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-muted);
+}
+
+.tabular-columns__meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.tabular-columns__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(90px, 1fr));
+  gap: 0.35rem 0.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.tabular-columns__stats dt {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-muted);
+}
+
+.tabular-columns__stats dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.scatter-figure {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(17, 28, 51, 0.35);
+}
+
+.scatter-figure svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.scatter-axis {
+  stroke: rgba(255, 255, 255, 0.4);
+  stroke-width: 1;
+}
+
 .tabular-results {
   display: grid;
   gap: clamp(1.25rem, 1.5vw, 1.75rem);
@@ -61,7 +175,7 @@
 }
 
 @media (max-width: 720px) {
-  .tabular-results__header {
+  .tabular-overview__header {
     flex-direction: column;
     align-items: flex-start;
   }

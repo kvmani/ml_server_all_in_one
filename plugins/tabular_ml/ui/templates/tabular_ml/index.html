@@ -20,13 +20,12 @@
         <p class="tool-card__category">Machine Learning</p>
         <h1 id="tabular-ml-title" class="section-heading">Tabular ML sandbox</h1>
         <p>
-          Train lightweight regression or classification models on CSV data entirely in memory. Upload a dataset, select a
-          target column, and review validation metrics and feature importances without leaving the browser.
+          Load CSV datasets entirely in memory, preview records, generate scatter plots, and train lightweight models. All computations are performed offline in this browser session.
         </p>
         <ul>
           <li>Automatic task detection (classification or regression)</li>
-          <li>Feature importance ranked for the top five predictors</li>
-          <li>Export-ready metrics with consistent decimal precision</li>
+          <li>Column statistics and top feature importances</li>
+          <li>SVG scatter plots with optional colour encoding</li>
         </ul>
         <div class="tool-shell__actions">
           <a class="btn btn--subtle" data-keep-theme href="{{ help_href }}">Read ML guide</a>
@@ -34,10 +33,10 @@
       </aside>
 
       <div class="tool-shell__workspace">
-        <form id="train-form" class="surface-muted form-grid" enctype="multipart/form-data" novalidate>
+        <form id="dataset-form" class="surface-muted form-grid" enctype="multipart/form-data" novalidate>
           <div class="dropzone" id="dataset-dropzone">
             <div class="dropzone__copy">
-              <h2 class="section-heading">Drop CSV dataset</h2>
+              <h2 class="section-heading">Load CSV dataset</h2>
               <p class="dropzone__hint">Data remains in this session. Max size {{ upload_settings.get('max_mb', 2) }} MB. Ensure the first row contains column headers.</p>
               <p class="dropzone__hint" id="dataset-name" aria-live="polite"></p>
             </div>
@@ -46,37 +45,102 @@
             </div>
             <input id="dataset" name="dataset" type="file" accept="text/csv,application/vnd.ms-excel" class="visually-hidden" required>
           </div>
-          <div class="form-field">
-            <label class="form-field__label" for="target">
-              Target column
-              <button type="button" class="tooltip-trigger" data-tooltip="Provide the column name to predict. The model infers the task type automatically." aria-label="Target column help">?</button>
-            </label>
-            <input id="target" name="target" placeholder="e.g. hardness" required>
-            <p class="form-field__hint">Matches the header name in the CSV file.</p>
-          </div>
           <div class="form-actions">
-            <button class="btn" type="submit">Train model</button>
-            <button class="btn btn--ghost" type="reset" id="train-reset">Reset</button>
+            <button class="btn" type="submit">Load dataset</button>
+            <button class="btn btn--ghost" type="reset" id="dataset-reset">Reset</button>
           </div>
           <p class="status-text" data-role="status" aria-live="polite"></p>
         </form>
 
-        <section id="train-results" class="surface-muted tabular-results" hidden aria-live="polite">
-          <header class="tabular-results__header">
+        <section id="dataset-overview" class="surface-muted tabular-overview" hidden aria-live="polite">
+          <header class="tabular-overview__header">
             <div>
-              <p class="tool-card__category">Training results</p>
-              <h2 class="form-section__title">Performance summary</h2>
+              <p class="tool-card__category">Dataset preview</p>
+              <h2 class="form-section__title" id="dataset-title">Loaded dataset</h2>
+              <p class="form-field__hint" id="dataset-shape"></p>
             </div>
-            <p id="task" class="badge"></p>
+            <button class="btn btn--ghost" type="button" id="dataset-clear">Remove dataset</button>
           </header>
-          <div class="tabular-results__grid">
+          <div class="tabular-overview__grid">
             <div>
-              <h3 class="form-section__title">Metrics</h3>
-              <dl id="metrics" class="tabular-metrics"></dl>
+              <h3 class="form-section__title">Sample rows</h3>
+              <div class="preview-table" role="region" aria-live="polite">
+                <table id="preview-table"></table>
+              </div>
             </div>
             <div>
-              <h3 class="form-section__title">Top features</h3>
-              <ul id="importance" class="tabular-importance list-reset"></ul>
+              <h3 class="form-section__title">Column summary</h3>
+              <ul id="column-summary" class="tabular-columns list-reset"></ul>
+            </div>
+          </div>
+          <div class="tabular-overview__grid">
+            <div>
+              <h3 class="form-section__title">Scatter plot</h3>
+              <form id="scatter-form" class="form-grid" novalidate>
+                <div class="input-grid">
+                  <div class="form-field">
+                    <label class="form-field__label" for="scatter-x">X axis</label>
+                    <select id="scatter-x" name="x"></select>
+                  </div>
+                  <div class="form-field">
+                    <label class="form-field__label" for="scatter-y">Y axis</label>
+                    <select id="scatter-y" name="y"></select>
+                  </div>
+                  <div class="form-field">
+                    <label class="form-field__label" for="scatter-color">Colour (optional)</label>
+                    <select id="scatter-color" name="color"></select>
+                    <p class="form-field__hint">Use categorical columns to highlight clusters.</p>
+                  </div>
+                </div>
+                <div class="form-actions">
+                  <button class="btn" type="submit">Render scatter</button>
+                  <button class="btn btn--ghost" type="reset" id="scatter-reset">Reset</button>
+                </div>
+                <p class="status-text" data-role="status" aria-live="polite"></p>
+              </form>
+              <figure class="scatter-figure">
+                <svg id="scatter-plot" viewBox="0 0 480 320" role="img" aria-labelledby="scatter-title" hidden>
+                  <title id="scatter-title">Scatter plot</title>
+                </svg>
+                <figcaption id="scatter-caption" class="form-field__hint"></figcaption>
+              </figure>
+            </div>
+            <div>
+              <h3 class="form-section__title">Train model</h3>
+              <form id="train-form" class="form-grid" novalidate>
+                <div class="form-field">
+                  <label class="form-field__label" for="target">
+                    Target column
+                    <button type="button" class="tooltip-trigger" data-tooltip="Provide the column name to predict. Only numeric features are used for training." aria-label="Target column help">?</button>
+                  </label>
+                  <input id="target" name="target" placeholder="e.g. hardness" required>
+                  <p class="form-field__hint">Matches the header name in the CSV file.</p>
+                </div>
+                <div class="form-actions">
+                  <button class="btn" type="submit">Train model</button>
+                  <button class="btn btn--ghost" type="reset" id="train-reset">Reset</button>
+                </div>
+                <p class="status-text" data-role="status" aria-live="polite"></p>
+              </form>
+              <section id="train-results" class="surface-muted tabular-results" hidden>
+                <header class="tabular-results__header">
+                  <div>
+                    <p class="tool-card__category">Training results</p>
+                    <h4 class="form-section__title">Performance summary</h4>
+                  </div>
+                  <p id="task" class="badge"></p>
+                </header>
+                <div class="tabular-results__grid">
+                  <div>
+                    <h5 class="form-section__title">Metrics</h5>
+                    <dl id="metrics" class="tabular-metrics"></dl>
+                  </div>
+                  <div>
+                    <h5 class="form-section__title">Top features</h5>
+                    <ul id="importance" class="tabular-importance list-reset"></ul>
+                  </div>
+                </div>
+              </section>
             </div>
           </div>
         </section>
