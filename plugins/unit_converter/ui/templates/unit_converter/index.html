@@ -1,26 +1,79 @@
 {% extends "base.html" %}
 {% block title %}Unit Converter{% endblock %}
 {% block content %}
-<section class="tool">
-  <h2>Unit Converter</h2>
-  <form id="converter-form">
-    <label for="category">Category</label>
-    <select id="category" name="category">
-      {% for category in units %}
-        <option value="{{ category }}">{{ category|capitalize }}</option>
-      {% endfor %}
-    </select>
-    <label for="value">Value</label>
-    <input id="value" name="value" type="number" step="any" required>
-    <label for="from-unit">From</label>
-    <select id="from-unit" name="from_unit"></select>
-    <label for="to-unit">To</label>
-    <select id="to-unit" name="to_unit"></select>
-    <button class="btn" type="submit">Convert</button>
-    <p data-role="status" aria-live="polite"></p>
-  </form>
-  <p id="result" aria-live="polite"></p>
-</section>
+  {% set docs_url = plugin_settings.get('docs') if plugin_settings is defined else None %}
+  {% if docs_url %}
+    {% set help_href = docs_url + ('&' if '?' in docs_url else '?') + 'theme=' + current_theme %}
+  {% else %}
+    {% set help_href = url_for('help_page', slug='unit_converter', theme=current_theme) %}
+  {% endif %}
+  <section class="shell surface-block" aria-labelledby="unit-converter-title">
+    <div class="tool-shell__layout">
+      <aside class="tool-shell__intro">
+        <div class="tool-shell__icon" aria-hidden="true">
+          <img src="{{ url_for('unit_converter.static', filename='img/UnitConverter_icon.png') }}" alt="">
+        </div>
+        <p class="tool-card__category">General Utilities</p>
+        <h1 id="unit-converter-title" class="section-heading">Scientific unit converter</h1>
+        <p>
+          Convert between laboratory units with instant validation. Choose a category, select source and destination units, and
+          obtain precision-controlled results without leaving the offline workspace.
+        </p>
+        <ul>
+          <li>Categories include length, mass, temperature, energy, and more</li>
+          <li>Keyboard-friendly navigation with real-time feedback</li>
+          <li>Results are formatted to four decimal places for consistency</li>
+        </ul>
+        <div class="tool-shell__actions">
+          <a class="btn btn--subtle" data-keep-theme href="{{ help_href }}">Read conversion guide</a>
+        </div>
+      </aside>
+
+      <div class="tool-shell__workspace">
+        <form id="converter-form" class="surface-muted form-grid" novalidate>
+          <div class="input-grid">
+            <div class="form-field">
+              <label class="form-field__label" for="category">
+                Measurement category
+                <button type="button" class="tooltip-trigger" data-tooltip="Determines the conversion table that will be used. Each category includes compatible units only." aria-label="Category help">?</button>
+              </label>
+              <select id="category" name="category">
+                {% for category in units %}
+                  <option value="{{ category }}">{{ category|capitalize }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-field">
+              <label class="form-field__label" for="value">
+                Value
+                <button type="button" class="tooltip-trigger" data-tooltip="Enter any numeric quantity. Decimals and scientific notation are supported." aria-label="Value help">?</button>
+              </label>
+              <input id="value" name="value" type="number" step="any" inputmode="decimal" required>
+            </div>
+            <div class="form-field">
+              <label class="form-field__label" for="from-unit">From unit</label>
+              <select id="from-unit" name="from_unit"></select>
+            </div>
+            <div class="form-field">
+              <label class="form-field__label" for="to-unit">To unit</label>
+              <select id="to-unit" name="to_unit"></select>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn" type="submit">Convert value</button>
+            <button class="btn btn--ghost" type="reset" id="converter-reset">Reset</button>
+          </div>
+          <p class="status-text" data-role="status" aria-live="polite"></p>
+        </form>
+
+        <section class="surface-muted" aria-live="polite" id="converter-output" hidden>
+          <h2 class="form-section__title">Conversion result</h2>
+          <p id="result" class="section-heading"></p>
+          <p class="form-field__hint">Results are rounded to four decimal places.</p>
+        </section>
+      </div>
+    </div>
+  </section>
 {% endblock %}
 {% block scripts %}
 <script type="module">
@@ -29,6 +82,10 @@
   const category = document.getElementById('category');
   const fromUnit = document.getElementById('from-unit');
   const toUnit = document.getElementById('to-unit');
+  const resultEl = document.getElementById('result');
+  const outputSection = document.getElementById('converter-output');
+  const resetButton = document.getElementById('converter-reset');
+
   function populate(unitsList) {
     fromUnit.innerHTML = '';
     toUnit.innerHTML = '';
@@ -42,13 +99,16 @@
     });
     toUnit.selectedIndex = Math.min(1, unitsList.length - 1);
   }
+
   populate(units[category.value]);
   category.addEventListener('change', () => {
     populate(units[category.value]);
   });
+
   const form = document.getElementById('converter-form');
-  const resultEl = document.getElementById('result');
-  bindForm(form, {
+  const controller = bindForm(form, {
+    pendingText: 'Converting…',
+    successText: 'Conversion complete',
     async onSubmit() {
       const payload = {
         value: parseFloat(form.value.value),
@@ -56,6 +116,9 @@
         from_unit: form['from_unit'].value,
         to_unit: form['to_unit'].value,
       };
+      if (Number.isNaN(payload.value)) {
+        throw new Error('Enter a numeric value');
+      }
       const response = await fetch('/unit_converter/api/v1/convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -66,7 +129,17 @@
         throw new Error(data.error || 'Conversion failed');
       }
       resultEl.textContent = `${payload.value} ${payload.from_unit} = ${data.result.toFixed(4)} ${payload.to_unit}`;
+      outputSection.hidden = false;
     },
+  });
+
+  controller.setStatus('Enter a value to convert', 'info');
+
+  resetButton.addEventListener('click', () => {
+    form.reset();
+    populate(units[category.value]);
+    outputSection.hidden = true;
+    controller.setStatus('Ready', 'info');
   });
 </script>
 {% endblock %}

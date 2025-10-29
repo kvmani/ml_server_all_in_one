@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, Response, jsonify, render_template, request
+from flask import Blueprint, Response, current_app, jsonify, render_template, request
 
 from app.security import validate_mime
 from common.validate import FileLimit, ValidationError, enforce_limits
@@ -22,7 +22,8 @@ bp = Blueprint(
 
 @bp.get("/")
 def index() -> str:
-    return render_template("tabular_ml/index.html")
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("tabular_ml", {})
+    return render_template("tabular_ml/index.html", plugin_settings=settings)
 
 
 @bp.post("/api/v1/train")
@@ -32,7 +33,19 @@ def train() -> Response:
     if not file or not target:
         return jsonify({"error": "Dataset and target column are required"}), 400
     try:
-        enforce_limits([file], FileLimit(max_files=1, max_size=2 * 1024 * 1024))
+        settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("tabular_ml", {})
+        upload = settings.get("upload", {})
+        max_mb = upload.get("max_mb", 2)
+        try:
+            max_bytes = int(float(max_mb) * 1024 * 1024)
+        except (TypeError, ValueError):
+            max_bytes = 2 * 1024 * 1024
+        max_files = upload.get("max_files", 1)
+        try:
+            max_files_int = int(max_files)
+        except (TypeError, ValueError):
+            max_files_int = 1
+        enforce_limits([file], FileLimit(max_files=max_files_int or 1, max_size=max_bytes))
         validate_mime([file], {"text/csv", "application/vnd.ms-excel"})
     except (ValidationError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400

@@ -1,46 +1,25 @@
-.pdf-tool {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
+.pdf-shell {
+  gap: clamp(1.75rem, 2vw, 2.5rem);
 }
 
-.panel {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
+.merge-panel,
+.split-panel {
+  display: grid;
+  gap: clamp(1.25rem, 1.5vw, 1.75rem);
 }
 
-.panel__header h3 {
-  margin: 0;
-}
-
-.merge-controls,
-.merge-actions,
-.split-controls {
+.merge-panel__header {
   display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
 }
 
-.output-name {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.output-name input,
-.merge-entry input[type="text"],
-.split-controls input[type="file"] {
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--fg);
-  padding: 0.5rem;
+.merge-output {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 220px;
 }
 
 .merge-entries {
@@ -48,66 +27,175 @@
   gap: 1rem;
 }
 
-.merge-entry {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1rem;
+.merge-entries:empty {
+  min-height: 140px;
+  border: 1.5px dashed rgba(99, 213, 255, 0.35);
+  border-radius: var(--radius-md);
   display: grid;
-  gap: 0.75rem;
+  place-items: center;
+  color: var(--color-muted);
+  background: rgba(17, 28, 51, 0.45);
+}
+
+.merge-entries:empty::before {
+  content: "No PDFs queued yet. Drop files to begin.";
+  padding: 1.5rem;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.merge-entry {
+  background: rgba(17, 28, 51, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 1.1rem;
+  display: grid;
+  gap: 0.9rem;
+  box-shadow: var(--shadow-sm);
 }
 
 .merge-entry__header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+.merge-entry__header strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.merge-entry__meta {
+  font-size: 0.85rem;
+  color: var(--color-muted);
 }
 
 .merge-entry__actions {
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 .merge-entry__actions button {
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--fg);
-  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--color-border);
+  background: rgba(8, 12, 26, 0.4);
+  color: var(--color-text);
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
   cursor: pointer;
 }
 
+.merge-entry__actions button:hover,
+.merge-entry__actions button:focus-visible {
+  background: rgba(99, 213, 255, 0.18);
+  border-color: rgba(99, 213, 255, 0.35);
+}
+
+.merge-entry label {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.merge-entry label input[type="text"] {
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: rgba(8, 12, 26, 0.4);
+  color: var(--color-text);
+}
+
+.merge-entry__details {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-muted, rgba(8, 12, 26, 0.4));
+  padding: 0.75rem 0.9rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.merge-entry__details-text {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.merge-entry__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+
+.merge-entry__meta-grid dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+}
+
+.merge-entry__meta-grid dd {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+.merge-entry__details[data-state="error"] {
+  border-color: var(--color-danger);
+}
+
 .merge-entry__preview {
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
-  max-height: 360px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(5, 8, 18, 0.65);
 }
 
 .merge-entry__preview iframe {
   width: 100%;
-  height: 360px;
+  height: 320px;
   border: 0;
-  background: rgba(0, 0, 0, 0.15);
+  background: transparent;
 }
 
-.status {
-  min-height: 1.25rem;
-  color: #9aa3b5;
+.merge-actions {
+  justify-content: flex-start;
 }
 
-#split-results ul {
+.split-panel .dropzone {
+  margin-top: 0.5rem;
+}
+
+.split-results {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.split-results ul {
   list-style: none;
   padding: 0;
   margin: 0;
   display: grid;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
-#split-results button {
-  display: inline-flex;
+.split-results li {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.split-results button {
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .merge-panel__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }

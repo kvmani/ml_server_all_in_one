@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Help · Unit Converter{% endblock %}
+{% block content %}
+  <section class="shell surface-block help-content" aria-labelledby="converter-help-title">
+    <header>
+      <p class="tool-card__category">Reference utilities</p>
+      <h1 id="converter-help-title" class="section-heading">Unit Converter guidance</h1>
+      <p class="hero__subtitle">Perform fast conversions across engineering units with category-aware validation.</p>
+    </header>
+
+    <article class="surface-muted help-section">
+      <h2>Using the converter</h2>
+      <ol>
+        <li>Select a measurement category (length, mass, temperature, etc.).</li>
+        <li>Enter a numeric value. Scientific notation is accepted.</li>
+        <li>Choose source and destination units; incompatible combinations are filtered automatically.</li>
+        <li>Submit the form to view the converted value and precision-controlled output.</li>
+      </ol>
+    </article>
+
+    <article class="surface-muted help-section">
+      <h2>Accuracy notes</h2>
+      <ul class="list-reset">
+        <li>Conversions use vetted factors stored in <code>plugins/unit_converter/core</code>; update these tables to extend coverage.</li>
+        <li>Results are rounded to four decimal places to keep laboratory notebooks tidy.</li>
+        <li>Use the reset button to clear the workspace before switching categories.</li>
+      </ul>
+    </article>
+  </section>
+{% endblock %}

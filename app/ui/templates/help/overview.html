@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Help · Platform overview{% endblock %}
+{% block content %}
+  <section class="shell surface-block help-content" aria-labelledby="help-overview-title">
+    <header>
+      <p class="tool-card__category">Documentation hub</p>
+      <h1 id="help-overview-title" class="section-heading">ML Server All-In-One help center</h1>
+      <p class="hero__subtitle">
+        {{ site_settings.description or 'Offline toolkit providing segmentation, document processing, analytics, and conversions.' }}
+        Use this hub to explore workflows, configuration knobs, and troubleshooting tips for each integrated tool.
+      </p>
+    </header>
+
+    <div class="help-grid">
+      <article class="surface-muted help-section">
+        <h2>Quick start</h2>
+        <ol>
+          <li>Install dependencies following the README instructions in the repository root.</li>
+          <li>Review <code>config.yml</code> to set upload limits, default theme, and help links before starting the server.</li>
+          <li>Run <code>python scripts/run_dev.py</code> and open <code>http://localhost:5000/?theme={{ current_theme }}</code> to explore tools.</li>
+          <li>Visit each tool's help page below for detailed workflows and parameter explanations.</li>
+        </ol>
+      </article>
+
+      <article class="surface-muted help-section">
+        <h2>Platform configuration</h2>
+        <p>
+          Global behaviour is controlled via <code>config.yml</code>. Key options include site name, theme palette, maximum upload sizes,
+          and per-plugin documentation links. Changes are picked up on the next application restart.
+        </p>
+        <ul class="list-reset">
+          <li><strong>Theme options:</strong> {{ theme_options|length }} selectable palettes exposed through the header toggle.</li>
+          <li><strong>Default theme:</strong> <code>{{ current_theme }}</code> (configurable via <code>site.default_theme</code>).</li>
+          <li><strong>Upload ceiling:</strong> {{ site_settings.max_content_length_mb or 25 }} MB global request limit.</li>
+        </ul>
+      </article>
+    </div>
+
+    <section aria-labelledby="help-tool-directory">
+      <h2 id="help-tool-directory">Tool directory</h2>
+      <div class="help-grid">
+        {% for plugin in nav_plugins %}
+          {% set plugin_settings = plugin_settings_map.get(plugin.blueprint, {}) %}
+          {% set docs_url = plugin.docs or url_for('help_page', slug=plugin.blueprint, theme=current_theme) %}
+          <article class="surface-muted help-section">
+            <h3>{{ plugin.title }}</h3>
+            <p class="hero__subtitle">{{ plugin.summary }}</p>
+            {% if plugin_settings.upload %}
+              {% set upload = plugin_settings.upload %}
+              <p class="form-field__hint">Upload limit: {{ upload.max_files or 1 }} file(s), {{ upload.max_mb or 5 }} MB each.</p>
+            {% elif plugin_settings.merge_upload %}
+              <p class="form-field__hint">Merge up to {{ plugin_settings.merge_upload.max_files or 10 }} files ({{ plugin_settings.merge_upload.max_mb or 5 }} MB each).</p>
+            {% endif %}
+            <div class="tool-card__actions">
+              <a class="btn" data-keep-theme href="{{ url_for(plugin.blueprint ~ '.index', theme=current_theme) }}">Open tool</a>
+              <a class="btn btn--subtle" data-keep-theme href="{{ docs_url }}{% if '?' in docs_url %}&{% else %}?{% endif %}theme={{ current_theme }}">Help</a>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  </section>
+{% endblock %}

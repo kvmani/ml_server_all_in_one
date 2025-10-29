@@ -57,3 +57,29 @@ def test_split_endpoint_returns_pages():
     assert response.status_code == 200
     payload = response.get_json()
     assert len(payload["pages"]) == 2
+
+
+def test_merge_respects_file_limit():
+    client = _make_client()
+    manifest = []
+    data: dict[str, object] = {"output_name": "merged.pdf"}
+    for index in range(21):
+        field = f"file-{index}"
+        manifest.append({"field": field, "filename": f"doc-{index}.pdf", "pages": "all"})
+        data[field] = (BytesIO(_dummy_pdf()), f"doc-{index}.pdf")
+    data["manifest"] = json.dumps(manifest)
+
+    response = client.post("/pdf_tools/api/v1/merge", data=data, content_type="multipart/form-data")
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert "Too many files" in payload["error"]
+
+
+def test_metadata_endpoint_reports_pages_and_size():
+    client = _make_client()
+    data = {"file": (BytesIO(_dummy_pdf(3)), "meta.pdf")}
+    response = client.post("/pdf_tools/api/v1/metadata", data=data, content_type="multipart/form-data")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["pages"] == 3
+    assert payload["size_bytes"] > 0

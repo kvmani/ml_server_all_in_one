@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, Response, jsonify, render_template, request
+from flask import Blueprint, Response, current_app, jsonify, render_template, request
 
 from ..core import ConversionError, available_units, convert
 
@@ -19,7 +19,8 @@ bp = Blueprint(
 
 @bp.get("/")
 def index() -> str:
-    return render_template("unit_converter/index.html", units=available_units())
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("unit_converter", {})
+    return render_template("unit_converter/index.html", units=available_units(), plugin_settings=settings)
 
 
 @bp.post("/api/v1/convert")

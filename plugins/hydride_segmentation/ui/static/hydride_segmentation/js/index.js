@@ -1,11 +1,16 @@
-import { downloadBlob } from "/static/js/core.js";
+import { downloadBlob, setupDropzone } from "/static/js/core.js";
 
 const form = document.getElementById("segment-form");
 const statusEl = form.querySelector("[data-role='status']");
+const dropzone = document.getElementById("image-dropzone");
+const fileInput = document.getElementById("image");
+const browseButton = document.getElementById("image-browse");
+const resetImageButton = document.getElementById("image-reset");
+const previewImage = document.getElementById("image-preview");
 const results = document.getElementById("results");
 const modelSelect = document.getElementById("model");
-const parameterPanel = document.querySelector(".parameters");
-const parameterInputs = Array.from(document.querySelectorAll(".parameter-grid input"));
+const parameterPanel = document.querySelector(".hydride-parameters");
+const parameterInputs = Array.from(document.querySelectorAll(".hydride-parameters__grid input"));
 const cropToggle = document.getElementById("crop-enabled");
 const cropPercent = document.getElementById("crop-percent");
 const resetButton = document.getElementById("reset-params");
@@ -32,6 +37,7 @@ const combinedPanel = document.getElementById("combined-panel");
 const defaults = new Map();
 parameterInputs.forEach((input) => defaults.set(input.name, input.value));
 defaults.set("crop_enabled", cropToggle.checked);
+defaults.set("crop_percent", cropPercent.value);
 defaults.set("model", modelSelect.value);
 defaults.set("brightness", brightnessInput.value);
 defaults.set("contrast", contrastInput.value);
@@ -39,10 +45,16 @@ defaults.set("contrast", contrastInput.value);
 const history = [];
 let historyIndex = -1;
 let currentImages = {};
+let previewUrl = null;
+const samplePreview = previewImage?.src || "";
 
-function setStatus(message) {
-  if (statusEl) {
-    statusEl.textContent = message;
+function setStatus(message, type = "info") {
+  if (!statusEl) return;
+  statusEl.textContent = message || "";
+  if (message) {
+    statusEl.dataset.status = type;
+  } else {
+    delete statusEl.dataset.status;
   }
 }
 
@@ -54,6 +66,24 @@ function updateTone() {
   const brightnessFactor = (Number(brightnessInput.value) + 100) / 100;
   const contrastFactor = Number(contrastInput.value) / 100;
   inputImage.style.filter = `brightness(${brightnessFactor}) contrast(${contrastFactor})`;
+}
+
+function updatePreview(file) {
+  if (!previewImage) return;
+  if (previewUrl) {
+    URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+  }
+  if (file) {
+    previewUrl = URL.createObjectURL(file);
+    previewImage.src = previewUrl;
+    previewImage.alt = `Preview of ${file.name}`;
+    dropzone?.classList.add("has-file");
+  } else {
+    previewImage.src = samplePreview;
+    previewImage.alt = "Sample microscopy placeholder";
+    dropzone?.classList.remove("has-file");
+  }
 }
 
 function renderResult(payload) {
@@ -95,9 +125,7 @@ function renderResult(payload) {
 function updateHistoryControls() {
   historyBack.disabled = historyIndex <= 0;
   historyForward.disabled = historyIndex === -1 || historyIndex >= history.length - 1;
-  historyStatus.textContent = history.length
-    ? `Result ${historyIndex + 1} of ${history.length}`
-    : "";
+  historyStatus.textContent = history.length ? `Result ${historyIndex + 1} of ${history.length}` : "";
 }
 
 function applyHistory(index) {
@@ -137,7 +165,9 @@ function base64ToBlob(data) {
 
 function toggleParameters() {
   const disabled = modelSelect.value === "ml";
-  parameterPanel.classList.toggle("is-disabled", disabled);
+  if (parameterPanel) {
+    parameterPanel.classList.toggle("is-disabled", disabled);
+  }
   parameterInputs.forEach((input) => {
     input.disabled = disabled;
   });
@@ -147,10 +177,15 @@ function toggleParameters() {
 
 toggleParameters();
 
-modelSelect.addEventListener("change", toggleParameters);
+modelSelect.addEventListener("change", () => {
+  toggleParameters();
+  if (modelSelect.value === "ml") {
+    setStatus("ML proxy uses tuned defaults", "info");
+  }
+});
 
 cropToggle.addEventListener("change", () => {
-  cropPercent.disabled = !cropToggle.checked;
+  cropPercent.disabled = !cropToggle.checked || modelSelect.value === "ml";
   if (!cropToggle.checked) {
     cropPercent.value = defaults.get("crop_percent");
   }
@@ -161,13 +196,11 @@ resetButton.addEventListener("click", () => {
     input.value = defaults.get(input.name);
   });
   cropToggle.checked = defaults.get("crop_enabled");
-  cropPercent.disabled = !cropToggle.checked;
-  if (!cropToggle.checked) {
-    cropPercent.value = defaults.get("crop_percent");
-  }
+  cropPercent.disabled = !cropToggle.checked || modelSelect.value === "ml";
+  cropPercent.value = defaults.get("crop_percent");
   modelSelect.value = defaults.get("model");
   toggleParameters();
-  setStatus("Parameters reset to defaults");
+  setStatus("Parameters reset to defaults", "success");
 });
 
 clearButton.addEventListener("click", () => {
@@ -177,11 +210,12 @@ clearButton.addEventListener("click", () => {
     input.value = defaults.get(input.name);
   });
   cropToggle.checked = defaults.get("crop_enabled");
-  cropPercent.disabled = !cropToggle.checked;
+  cropPercent.disabled = !cropToggle.checked || modelSelect.value === "ml";
   cropPercent.value = defaults.get("crop_percent");
   modelSelect.value = defaults.get("model");
   toggleParameters();
-  setStatus("Cleared");
+  updatePreview(null);
+  setStatus("Workspace cleared", "info");
 });
 
 historyBack.addEventListener("click", () => {
@@ -209,18 +243,45 @@ downloadBar.addEventListener("click", (event) => {
   const key = button.getAttribute("data-download");
   const data = currentImages[key];
   if (!data) {
+    setStatus("Run segmentation before downloading", "error");
     return;
   }
   const blob = base64ToBlob(data);
   const filename = `${key || "output"}.png`;
   downloadBlob(blob, filename);
+  setStatus(`Saved ${filename}`, "success");
 });
+
+const resetDropzone = setupDropzone(dropzone, fileInput, {
+  accept: fileInput.accept,
+  onFiles(files, meta) {
+    if (!files.length) {
+      if (meta?.rejected?.length) {
+        setStatus("Unsupported file type", "error");
+      }
+      updatePreview(null);
+      return;
+    }
+    const [file] = files;
+    updatePreview(file);
+    setStatus(`${file.name} ready`, "success");
+  },
+});
+if (browseButton) {
+  browseButton.addEventListener("click", () => fileInput.click());
+}
+if (resetImageButton) {
+  resetImageButton.addEventListener("click", () => {
+    resetDropzone();
+    updatePreview(null);
+    setStatus("Sample preview restored", "info");
+  });
+}
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const fileInput = document.getElementById("image");
   if (!fileInput.files || fileInput.files.length === 0) {
-    setStatus("Select an image first");
+    setStatus("Select or drop an image first", "error");
     return;
   }
 
@@ -235,10 +296,11 @@ form.addEventListener("submit", async (event) => {
     });
     if (cropToggle.checked) {
       formData.append("crop_enabled", "on");
+      formData.append("crop_percent", cropPercent.value);
     }
   }
 
-  setStatus("Processing…");
+  setStatus("Processing…", "progress");
   try {
     const response = await fetch("/hydride_segmentation/api/v1/segment", {
       method: "POST",
@@ -250,8 +312,8 @@ form.addEventListener("submit", async (event) => {
     }
     const payload = await response.json();
     pushHistory(payload);
-    setStatus("Done");
+    setStatus("Segmentation complete", "success");
   } catch (error) {
-    setStatus(error.message);
+    setStatus(error instanceof Error ? error.message : "Segmentation failed", "error");
   }
 });

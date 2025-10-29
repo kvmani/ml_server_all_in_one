@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Help · Hydride Segmentation{% endblock %}
+{% block content %}
+  {% set upload = plugin_settings.get('upload', {}) %}
+  <section class="shell surface-block help-content" aria-labelledby="hydride-help-title">
+    <header>
+      <p class="tool-card__category">Hydride analysis</p>
+      <h1 id="hydride-help-title" class="section-heading">Hydride Segmentation guidance</h1>
+      <p class="hero__subtitle">Segment zirconium alloy micrographs using the conventional pipeline with tunable preprocessing and thresholding options.</p>
+    </header>
+
+    <article class="surface-muted help-section">
+      <h2>Workflow summary</h2>
+      <ol>
+        <li>Drop a PNG, JPEG, or TIFF image (max {{ upload.get('max_mb', 5) }} MB) into the workspace.</li>
+        <li>Select the <strong>Conventional</strong> backend to expose manual parameters or choose the <strong>ML proxy</strong> for auto defaults.</li>
+        <li>Tune CLAHE, adaptive threshold, and morphology settings as needed, then run segmentation.</li>
+        <li>Review the generated mask, overlay, and analysis metrics. Use the history controls to compare successive runs.</li>
+      </ol>
+    </article>
+
+    <article class="surface-muted help-section">
+      <h2>Parameter reference</h2>
+      <ul class="list-reset">
+        <li><strong>CLAHE clip limit:</strong> Enhances local contrast. Lower values preserve smooth regions; higher values sharpen edges.</li>
+        <li><strong>Adaptive window / offset:</strong> Control the local threshold. Increase the window to smooth noisy frames, adjust offset to tighten or relax masks.</li>
+        <li><strong>Morphology kernel & iterations:</strong> Define how aggressively neighbouring hydrides are joined. Start with the defaults and increase gradually.</li>
+        <li><strong>Area threshold:</strong> Removes small speckles. Lower it when detecting very fine hydrides.</li>
+        <li><strong>Crop percent:</strong> Trim mounting artefacts at the bottom of the frame before segmentation.</li>
+      </ul>
+    </article>
+
+    <article class="surface-muted help-section">
+      <h2>Troubleshooting</h2>
+      <ul class="list-reset">
+        <li>If the mask is empty, reduce the adaptive offset or area threshold and verify the input exposure.</li>
+        <li>For overly merged hydrides, decrease morphology iterations or kernel size.</li>
+        <li>Use the download buttons in the results panel to export PNG artefacts for record keeping.</li>
+      </ul>
+      <p class="form-field__hint">All processing occurs in memory; refresh the page to purge the session.</p>
+    </article>
+  </section>
+{% endblock %}

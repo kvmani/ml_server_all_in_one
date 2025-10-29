@@ -4,122 +4,264 @@
 <link rel="stylesheet" href="{{ url_for('hydride_segmentation.static', filename='css/index.css') }}">
 {% endblock %}
 {% block content %}
-<section class="tool hydride-tool" aria-label="Hydride segmentation workstation">
-  <header class="tool__header">
-    <h2>Hydride Segmentation</h2>
-    <p>Upload zirconium microscopy imagery, adjust parameters, and inspect segmentation, overlays, and orientation analysis directly in the browser.</p>
-  </header>
-  <form id="segment-form" class="panel" enctype="multipart/form-data">
-    <fieldset class="input-block">
-      <legend>Input</legend>
-      <div class="field">
-        <label for="image">Microscopy image</label>
-        <input id="image" name="image" type="file" accept="image/png,image/jpeg,image/tiff" required>
-      </div>
-      <div class="field">
-        <label for="model">Backend</label>
-        <select id="model" name="model">
-          <option value="conventional">Conventional model</option>
-          <option value="ml">ML model (offline proxy)</option>
-        </select>
-      </div>
-    </fieldset>
-    <details class="panel parameters" open>
-      <summary>Conventional parameters</summary>
-      <div class="parameter-grid" role="group" aria-label="Segmentation parameters">
-        <label>CLAHE clip limit<input type="number" name="clahe_clip_limit" step="0.1" value="2.0" min="0.1"></label>
-        <label>CLAHE tiles (X)<input type="number" name="clahe_grid_x" min="1" value="8"></label>
-        <label>CLAHE tiles (Y)<input type="number" name="clahe_grid_y" min="1" value="8"></label>
-        <label>Adaptive window<input type="number" name="adaptive_window" min="3" step="2" value="13"></label>
-        <label>Adaptive C<input type="number" name="adaptive_offset" value="40"></label>
-        <label>Morph kernel (X)<input type="number" name="morph_kernel_x" min="1" value="5"></label>
-        <label>Morph kernel (Y)<input type="number" name="morph_kernel_y" min="1" value="5"></label>
-        <label>Morph iterations<input type="number" name="morph_iterations" min="0" value="0"></label>
-        <label>Area threshold<input type="number" name="area_threshold" min="1" value="95"></label>
-        <label>Crop percent<input type="number" id="crop-percent" name="crop_percent" min="0" max="95" value="10"></label>
-      </div>
-      <label class="checkbox">
-        <input type="checkbox" id="crop-enabled" name="crop_enabled"> Crop bottom of image before segmentation
-      </label>
-    </details>
-    <div class="form-actions">
-      <button class="btn" type="submit">Run segmentation</button>
-      <button class="btn btn-ghost" type="button" id="reset-params">Reset parameters</button>
-      <button class="btn btn-ghost" type="button" id="clear-results">Clear</button>
-    </div>
-    <p data-role="status" aria-live="polite" class="form-status"></p>
-  </form>
+  {% set upload_settings = plugin_settings.get('upload', {}) %}
+  {% set max_mb = upload_settings.get('max_mb', 5) %}
+  {% set docs_url = plugin_settings.get('docs') %}
+  {% if docs_url %}
+    {% set help_href = docs_url + ('&' if '?' in docs_url else '?') + 'theme=' + current_theme %}
+  {% else %}
+    {% set help_href = url_for('help_page', slug='hydride_segmentation', theme=current_theme) %}
+  {% endif %}
+  <section class="shell surface-block hydride-shell" aria-labelledby="hydride-title">
+    <div class="tool-shell__layout">
+      <aside class="tool-shell__intro">
+        <div class="tool-shell__icon" aria-hidden="true">
+          <img src="{{ url_for('hydride_segmentation.static', filename='img/hydride_icon.svg') }}" alt="">
+        </div>
+        <p class="tool-card__category">Microstructural Analysis</p>
+        <h1 id="hydride-title" class="section-heading">Hydride segmentation workstation</h1>
+        <p>
+          Upload zirconium alloy microscopy images, tune the segmentation pipeline, and review high-resolution overlays,
+          histograms, and quantitative metrics. Everything executes locally with no data persistence.
+        </p>
+        <ul>
+          <li>Drag &amp; drop microscopy files or browse from disk</li>
+          <li>Tooltips describe every parameter and default ranges</li>
+          <li>Result history allows undo / redo across segmentation runs</li>
+        </ul>
+        <div class="tool-shell__actions">
+          <a class="btn btn--subtle" data-keep-theme href="{{ help_href }}">Read hydride guide</a>
+        </div>
+        <div class="surface-muted">
+          <p class="form-field__hint">Supported formats: PNG, JPEG, TIFF. Maximum size {{ max_mb }} MB.</p>
+          <div class="tag-list">
+            <span class="badge">Offline inference</span>
+            <span class="badge">On-device rendering</span>
+          </div>
+        </div>
+      </aside>
 
-  <section id="results" class="panel results" hidden aria-live="polite">
-    <header class="results__header">
-      <h3>Segmentation results</h3>
-      <div class="history-controls" role="group" aria-label="Result history">
-        <button class="btn btn-ghost" id="history-back" type="button" disabled>Undo</button>
-        <button class="btn btn-ghost" id="history-forward" type="button" disabled>Redo</button>
-        <span id="history-status" class="history-status" aria-live="polite"></span>
+      <div class="tool-shell__workspace">
+        <form id="segment-form" class="form-grid" enctype="multipart/form-data" novalidate>
+          <section class="surface-muted">
+            <h2 class="form-section__title">Microscopy input</h2>
+            <div class="dropzone" id="image-dropzone">
+                <div class="dropzone__preview" aria-hidden="true">
+                  <img id="image-preview" src="{{ url_for('hydride_segmentation.static', filename='img/hydride_sample.png') }}" alt="Sample microscopy placeholder">
+              </div>
+              <div class="dropzone__copy">
+                <h3 class="section-heading">Drop microscopy image here</h3>
+                <p class="dropzone__hint">PNG, JPEG, or TIFF up to {{ max_mb }} MB. Your files never leave this workstation.</p>
+              </div>
+              <div class="dropzone__actions">
+                <button class="btn" type="button" id="image-browse">Browse file</button>
+                <button class="btn btn--ghost" type="button" id="image-reset" aria-describedby="image-reset-hint">Reset sample</button>
+              </div>
+              <p id="image-reset-hint" class="visually-hidden">Reset to the built-in sample thumbnail.</p>
+              <input id="image" name="image" type="file" class="visually-hidden" accept="image/png,image/jpeg,image/tiff" required>
+            </div>
+            <p class="status-text" data-role="status" aria-live="polite"></p>
+          </section>
+
+          <section class="surface-muted">
+            <h2 class="form-section__title">Pipeline selection</h2>
+            <div class="input-grid">
+              <div class="form-field">
+                <label class="form-field__label" for="model">
+                  Backend
+                  <button type="button" class="tooltip-trigger" data-tooltip="The conventional pipeline exposes parameter controls. The ML proxy runs a pretrained lightweight model with fixed settings." aria-label="Backend help">?</button>
+                </label>
+                <select id="model" name="model">
+                  <option value="conventional">Conventional pipeline (parameterised)</option>
+                  <option value="ml">ML proxy (auto)</option>
+                </select>
+              </div>
+              <label class="form-field form-field--checkbox" for="crop-enabled">
+                <span class="form-field__label">Crop bottom edge before segmentation</span>
+                <div class="form-field__control">
+                  <input type="checkbox" id="crop-enabled" name="crop_enabled">
+                  <span class="form-field__hint">Removes frame artefacts introduced by sample mounts.</span>
+                </div>
+              </label>
+              <div class="form-field">
+                <label class="form-field__label" for="crop-percent">
+                  Crop percentage
+                  <button type="button" class="tooltip-trigger" data-tooltip="Percentage of pixels trimmed from the bottom prior to binarisation. Useful for removing rulers or labels." aria-label="Crop percentage help">?</button>
+                </label>
+                <input type="number" id="crop-percent" name="crop_percent" min="0" max="95" value="10" step="1">
+                <p class="form-field__hint">Default 10%.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="surface-muted hydride-parameters">
+            <header class="hydride-parameters__header">
+              <h2 class="form-section__title">Conventional parameters</h2>
+              <span class="badge">Adjust when using conventional backend</span>
+            </header>
+            <div class="input-grid hydride-parameters__grid" role="group" aria-label="Segmentation parameters">
+              <div class="form-field">
+                <label class="form-field__label" for="clahe_clip_limit">
+                  CLAHE clip limit
+                  <button type="button" class="tooltip-trigger" data-tooltip="Higher values increase contrast enhancement; lower values preserve smooth regions. Typical range 1.5–3.0." aria-label="CLAHE clip limit help">?</button>
+                </label>
+                <input type="number" id="clahe_clip_limit" name="clahe_clip_limit" step="0.1" value="2.0" min="0.1">
+                <p class="form-field__hint">Default 2.0</p>
+              </div>
+              <div class="form-field">
+                <label class="form-field__label" for="clahe_grid_x">
+                  CLAHE tiles (X)
+                  <button type="button" class="tooltip-trigger" data-tooltip="Number of contextual regions along the X-axis used for adaptive equalisation." aria-label="CLAHE tiles X help">?</button>
+                </label>
+                <input type="number" id="clahe_grid_x" name="clahe_grid_x" min="1" value="8">
+                <p class="form-field__hint">Default 8 tiles</p>
+              </div>
+              <div class="form-field">
+                <label class="form-field__label" for="clahe_grid_y">
+                  CLAHE tiles (Y)
+                  <button type="button" class="tooltip-trigger" data-tooltip="Number of contextual regions along the Y-axis used for adaptive equalisation." aria-label="CLAHE tiles Y help">?</button>
+                </label>
+                <input type="number" id="clahe_grid_y" name="clahe_grid_y" min="1" value="8">
+                <p class="form-field__hint">Default 8 tiles</p>
+              </div>
+              <div class="form-field">
+                <label class="form-field__label" for="adaptive_window">
+                  Adaptive window
+                  <button type="button" class="tooltip-trigger" data-tooltip="Kernel size for adaptive thresholding. Larger windows smooth noise but may blur boundaries." aria-label="Adaptive window help">?</button>
+                </label>
+                <input type="number" id="adaptive_window" name="adaptive_window" min="3" step="2" value="13">
+                <p class="form-field__hint">Default 13 pixels</p>
+              </div>
+              <div class="form-field">
+                <label class="form-field__label" for="adaptive_offset">
+                  Adaptive C offset
+                  <button type="button" class="tooltip-trigger" data-tooltip="Constant subtracted from the adaptive threshold to control mask aggressiveness." aria-label="Adaptive offset help">?</button>
+                </label>
+                <input type="number" id="adaptive_offset" name="adaptive_offset" value="40">
+                <p class="form-field__hint">Default 40</p>
+              </div>
+              <div class="form-field">
+                <label class="form-field__label" for="morph_kernel_x">
+                  Morphological kernel (X)
+                  <button type="button" class="tooltip-trigger" data-tooltip="Horizontal size of the closing kernel used to join nearby hydrides." aria-label="Morphological kernel X help">?</button>
+                </label>
+                <input type="number" id="morph_kernel_x" name="morph_kernel_x" min="1" value="5">
+                <p class="form-field__hint">Default 5 px</p>
+              </div>
+              <div class="form-field">
+                <label class="form-field__label" for="morph_kernel_y">
+                  Morphological kernel (Y)
+                  <button type="button" class="tooltip-trigger" data-tooltip="Vertical size of the closing kernel used to join nearby hydrides." aria-label="Morphological kernel Y help">?</button>
+                </label>
+                <input type="number" id="morph_kernel_y" name="morph_kernel_y" min="1" value="5">
+                <p class="form-field__hint">Default 5 px</p>
+              </div>
+              <div class="form-field">
+                <label class="form-field__label" for="morph_iterations">
+                  Morphological iterations
+                  <button type="button" class="tooltip-trigger" data-tooltip="Number of times the morphological closing operation is applied. Increase to fill gaps." aria-label="Morphological iterations help">?</button>
+                </label>
+                <input type="number" id="morph_iterations" name="morph_iterations" min="0" value="0">
+                <p class="form-field__hint">Default 0 iterations</p>
+              </div>
+              <div class="form-field">
+                <label class="form-field__label" for="area_threshold">
+                  Area threshold
+                  <button type="button" class="tooltip-trigger" data-tooltip="Minimum connected-component area retained in the final mask. Filters out noise speckles." aria-label="Area threshold help">?</button>
+                </label>
+                <input type="number" id="area_threshold" name="area_threshold" min="1" value="95">
+                <p class="form-field__hint">Default 95 px</p>
+              </div>
+            </div>
+          </section>
+
+          <div class="form-actions">
+            <button class="btn" type="submit">Run segmentation</button>
+            <button class="btn btn--ghost" type="button" id="reset-params">Reset parameters</button>
+            <button class="btn btn--ghost" type="button" id="clear-results">Clear workspace</button>
+          </div>
+        </form>
+
+        <section id="results" class="surface-block hydride-results" hidden aria-live="polite">
+          <header class="hydride-results__header">
+            <div>
+              <p class="tool-card__category">Segmentation results</p>
+              <h2 class="section-heading">Run summary</h2>
+            </div>
+            <div class="history-controls" role="group" aria-label="Result history">
+              <button class="btn btn--ghost" id="history-back" type="button" disabled>Undo</button>
+              <button class="btn btn--ghost" id="history-forward" type="button" disabled>Redo</button>
+              <span id="history-status" class="form-field__hint" aria-live="polite"></span>
+            </div>
+          </header>
+
+          <div class="metrics-grid">
+            <article class="metric-card">
+              <span class="metric-card__label">Mask area fraction</span>
+              <span class="metric-card__value"><span id="metric-area"></span></span>
+              <span class="form-field__hint" id="metric-area-percent"></span>
+            </article>
+            <article class="metric-card">
+              <span class="metric-card__label">Hydride count</span>
+              <span class="metric-card__value" id="metric-count"></span>
+              <span class="form-field__hint">Objects detected</span>
+            </article>
+            <article class="metric-card">
+              <label class="form-field__label" for="brightness">Brightness</label>
+              <input id="brightness" type="range" min="-100" max="100" value="0">
+              <label class="form-field__label" for="contrast">Contrast</label>
+              <input id="contrast" type="range" min="50" max="300" value="100">
+              <span class="form-field__hint">Adjust preview only</span>
+            </article>
+          </div>
+
+          <div class="figure-grid">
+            <figure class="figure-card">
+              <img id="input-image" alt="Input image preview">
+              <figcaption class="figure-card__title">Input</figcaption>
+            </figure>
+            <figure class="figure-card">
+              <img id="mask-image" alt="Segmentation mask">
+              <figcaption class="figure-card__title">Predicted mask</figcaption>
+            </figure>
+            <figure class="figure-card">
+              <img id="overlay-image" alt="Segmentation overlay">
+              <figcaption class="figure-card__title">Overlay</figcaption>
+            </figure>
+            <figure class="figure-card">
+              <img id="orientation-map" alt="Hydride orientation map">
+              <figcaption class="figure-card__title">Orientation map</figcaption>
+            </figure>
+            <figure class="figure-card">
+              <img id="size-hist" alt="Hydride size histogram">
+              <figcaption class="figure-card__title">Size distribution</figcaption>
+            </figure>
+            <figure class="figure-card">
+              <img id="angle-hist" alt="Hydride orientation histogram">
+              <figcaption class="figure-card__title">Orientation distribution</figcaption>
+            </figure>
+            <figure class="figure-card">
+              <img id="combined-panel" alt="Combined diagnostic panel">
+              <figcaption class="figure-card__title">Combined diagnostics</figcaption>
+            </figure>
+          </div>
+
+          <div class="downloads" role="group" aria-label="Download outputs">
+            <button class="btn btn--subtle" data-download="input" type="button">Download input</button>
+            <button class="btn btn--subtle" data-download="mask" type="button">Download mask</button>
+            <button class="btn btn--subtle" data-download="overlay" type="button">Download overlay</button>
+            <button class="btn btn--subtle" data-download="orientation" type="button">Download orientation map</button>
+            <button class="btn btn--subtle" data-download="combined" type="button">Download combined panel</button>
+          </div>
+
+          <section class="surface-muted" aria-label="Pipeline log">
+            <h3 class="form-section__title">Pipeline log</h3>
+            <ul id="run-log" class="log-list"></ul>
+          </section>
+        </section>
       </div>
-    </header>
-    <div class="metrics">
-      <dl>
-        <div>
-          <dt>Mask area fraction</dt>
-          <dd><span id="metric-area"></span> <small id="metric-area-percent"></small></dd>
-        </div>
-        <div>
-          <dt>Hydride count</dt>
-          <dd id="metric-count"></dd>
-        </div>
-      </dl>
-      <div class="adjustments" role="group" aria-label="Brightness and contrast">
-        <label for="brightness">Brightness</label>
-        <input id="brightness" type="range" min="-100" max="100" value="0">
-        <label for="contrast">Contrast (%)</label>
-        <input id="contrast" type="range" min="50" max="300" value="100">
-      </div>
     </div>
-    <div class="figure-grid">
-      <figure>
-        <img id="input-image" alt="Input image preview">
-        <figcaption>Input</figcaption>
-      </figure>
-      <figure>
-        <img id="mask-image" alt="Segmentation mask">
-        <figcaption>Predicted mask</figcaption>
-      </figure>
-      <figure>
-        <img id="overlay-image" alt="Segmentation overlay">
-        <figcaption>Overlay</figcaption>
-      </figure>
-      <figure>
-        <img id="orientation-map" alt="Hydride orientation map">
-        <figcaption>Orientation map</figcaption>
-      </figure>
-      <figure>
-        <img id="size-hist" alt="Hydride size histogram">
-        <figcaption>Size distribution</figcaption>
-      </figure>
-      <figure>
-        <img id="angle-hist" alt="Hydride orientation histogram">
-        <figcaption>Orientation distribution</figcaption>
-      </figure>
-      <figure>
-        <img id="combined-panel" alt="Combined diagnostic panel">
-        <figcaption>Combined panel</figcaption>
-      </figure>
-    </div>
-    <div class="downloads" role="group" aria-label="Download outputs">
-      <button class="btn" data-download="input" type="button">Download input</button>
-      <button class="btn" data-download="mask" type="button">Download mask</button>
-      <button class="btn" data-download="overlay" type="button">Download overlay</button>
-      <button class="btn" data-download="orientation" type="button">Download orientation map</button>
-      <button class="btn" data-download="combined" type="button">Download combined panel</button>
-    </div>
-    <section class="log-panel" aria-label="Pipeline log">
-      <h4>Pipeline log</h4>
-      <ul id="run-log"></ul>
-    </section>
   </section>
-</section>
 {% endblock %}
 {% block scripts %}
 <script type="module" src="{{ url_for('hydride_segmentation.static', filename='js/index.js') }}"></script>

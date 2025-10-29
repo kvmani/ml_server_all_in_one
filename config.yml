@@ -1,0 +1,40 @@
+site:
+  name: "ML Server All-In-One"
+  description: "Offline toolkit providing segmentation, PDF processing, analytics, and conversion utilities."
+  default_theme: "midnight"
+  themes:
+    midnight:
+      label: "Midnight (Dark)"
+      description: "High-contrast dark interface optimized for dim labs."
+      color_scheme: "dark"
+    sunrise:
+      label: "Sunrise (Light)"
+      description: "Bright neutral palette for well-lit environments."
+      color_scheme: "light"
+  max_content_length_mb: 2048
+  help_overview: "/help/overview"
+plugins:
+  hydride_segmentation:
+    docs: "/help/hydride_segmentation"
+    summary: "Segment hydrides in zirconium alloy micrographs with adjustable preprocessing."
+    upload:
+      max_files: 1
+      max_mb: 5
+  pdf_tools:
+    docs: "/help/pdf_tools"
+    summary: "Merge, split, and organise PDF packets entirely offline."
+    merge_upload:
+      max_files: 20
+      max_mb: 100
+    split_upload:
+      max_files: 1
+      max_mb: 5
+  tabular_ml:
+    docs: "/help/tabular_ml"
+    summary: "Auto-detect ML tasks for CSV datasets and report model metrics."
+    upload:
+      max_files: 1
+      max_mb: 2
+  unit_converter:
+    docs: "/help/unit_converter"
+    summary: "Convert engineering units with verified conversion factors."
