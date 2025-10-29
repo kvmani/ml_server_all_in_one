@@ -1,83 +1,86 @@
-"""Core conversion logic for the unit converter."""
+"""Facade for the unit converter core utilities."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from functools import lru_cache
+from typing import Dict, List, Optional
+
+from .converter import (
+    BadInputError,
+    ConversionError,
+    Converter,
+    DimensionMismatchError,
+    InvalidUnitError,
+    UNIT_FAMILIES,
+    format_value,
+)
 
 
-class ConversionError(ValueError):
-    """Raised when a conversion request is invalid."""
+@lru_cache(maxsize=1)
+def _converter() -> Converter:
+    return Converter()
 
 
-@dataclass(frozen=True)
-class UnitCategory:
-    name: str
-    factors: dict[str, float]
+def list_families() -> List[str]:
+    """Return the supported unit families."""
+
+    return _converter().list_families()
 
 
-_CATEGORIES = {
-    "length": UnitCategory(
-        "length",
-        {
-            "meter": 1.0,
-            "centimeter": 0.01,
-            "millimeter": 0.001,
-            "kilometer": 1000.0,
-            "inch": 0.0254,
-            "foot": 0.3048,
-        },
-    ),
-    "mass": UnitCategory(
-        "mass",
-        {
-            "gram": 0.001,
-            "kilogram": 1.0,
-            "pound": 0.45359237,
-            "ounce": 0.0283495,
-        },
-    ),
-}
+def list_units(family: str) -> List[Dict[str, object]]:
+    """Return metadata for the units belonging to ``family``."""
+
+    return _converter().list_units(family)
 
 
-def temperature_convert(value: float, from_unit: str, to_unit: str) -> float:
-    if from_unit == to_unit:
-        return value
-    if from_unit == "celsius":
-        kelvin = value + 273.15
-    elif from_unit == "fahrenheit":
-        kelvin = (value + 459.67) * 5 / 9
-    elif from_unit == "kelvin":
-        kelvin = value
-    else:
-        raise ConversionError("Unsupported temperature unit")
+def convert(
+    value: float | str,
+    from_unit: str,
+    to_unit: str,
+    *,
+    mode: str = "absolute",
+    sig_figs: Optional[int] = None,
+    decimals: Optional[int] = None,
+    notation: str = "auto",
+) -> Dict[str, object]:
+    """Convert ``value`` between units and format the result."""
 
-    if to_unit == "celsius":
-        return kelvin - 273.15
-    if to_unit == "fahrenheit":
-        return kelvin * 9 / 5 - 459.67
-    if to_unit == "kelvin":
-        return kelvin
-    raise ConversionError("Unsupported temperature unit")
-
-
-def convert(value: float, category: str, from_unit: str, to_unit: str) -> float:
-    if category == "temperature":
-        return temperature_convert(value, from_unit, to_unit)
-    try:
-        info = _CATEGORIES[category]
-    except KeyError as exc:  # pragma: no cover - defensive
-        raise ConversionError("Unknown category") from exc
-    try:
-        base = value * info.factors[from_unit]
-        return base / info.factors[to_unit]
-    except KeyError as exc:
-        raise ConversionError("Unsupported unit") from exc
+    result = _converter().convert(value, from_unit, to_unit, mode=mode)
+    formatted = format_value(
+        result["result"], sig_figs=sig_figs, decimals=decimals, notation=notation
+    )
+    return {
+        "value": result["result"],
+        "unit": result["unit"],
+        "formatted": formatted,
+        "base": result["base"],
+    }
 
 
-def available_units() -> dict[str, list[str]]:
-    units = {category: sorted(info.factors) for category, info in _CATEGORIES.items()}
-    units["temperature"] = ["celsius", "fahrenheit", "kelvin"]
-    return units
+def convert_expression(
+    expression: str,
+    *,
+    target: Optional[str] = None,
+    sig_figs: Optional[int] = None,
+    decimals: Optional[int] = None,
+    notation: str = "auto",
+) -> Dict[str, object]:
+    """Evaluate an arbitrary unit expression and format the result."""
+
+    result = _converter().convert_expression(expression, target=target)
+    formatted = format_value(
+        result["result"], sig_figs=sig_figs, decimals=decimals, notation=notation
+    )
+    return {"value": result["result"], "unit": result["unit"], "formatted": formatted}
 
 
-__all__ = ["convert", "available_units", "ConversionError"]
+__all__ = [
+    "BadInputError",
+    "ConversionError",
+    "DimensionMismatchError",
+    "InvalidUnitError",
+    "list_families",
+    "list_units",
+    "convert",
+    "convert_expression",
+]

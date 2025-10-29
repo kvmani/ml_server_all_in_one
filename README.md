@@ -8,8 +8,8 @@ An offline-first Flask platform bundling microstructure analysis, PDF workflows,
 | --- | --- |
 | **Hydride Segmentation** | Drag-and-drop zirconium alloy micrographs, configure CLAHE/adaptive threshold/morphology parameters, inspect overlays and metrics, and export PNG artefacts. |
 | **PDF Tools** | Queue up to 10 PDFs, reorder with drag handles, apply per-file page ranges, merge instantly, or split a single PDF into per-page downloads. |
-| **Tabular ML** | Upload CSV datasets (≤2 MB), auto-detect regression vs. classification, view accuracy/R² metrics, and inspect feature importance rankings. |
-| **Unit Converter** | Convert between laboratory units (length, mass, temperature, energy, etc.) with keyboard-friendly controls and four-decimal precision. |
+| **Tabular ML** | Upload CSV datasets (≤2 MB), preview rows, build scatter plots, auto-detect regression vs. classification, and inspect top feature importances. |
+| **Unit Converter** | Convert between engineering units with Pint-backed accuracy, interval-aware temperature deltas, expression evaluation, and configurable precision. |
 
 Browse in-app help for each workspace via the header **Help** link or jump directly:
 

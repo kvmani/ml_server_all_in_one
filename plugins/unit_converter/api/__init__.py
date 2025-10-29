@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, request
 
-from ..core import ConversionError, available_units, convert
+from ..core import (
+    BadInputError,
+    DimensionMismatchError,
+    InvalidUnitError,
+    convert,
+    convert_expression,
+    list_families,
+    list_units,
+)
 
 
 bp = Blueprint(
@@ -17,30 +25,74 @@ bp = Blueprint(
 )
 
 
+def _format_error(message: str, status: int = 400) -> Response:
+    return jsonify({"error": message}), status
+
+
 @bp.get("/")
 def index() -> str:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("unit_converter", {})
-    return render_template("unit_converter/index.html", units=available_units(), plugin_settings=settings)
+    families = list_families()
+    units = {family: list_units(family) for family in families}
+    return render_template(
+        "unit_converter/index.html",
+        families=families,
+        units=units,
+        plugin_settings=settings,
+    )
+
+
+@bp.get("/api/v1/families")
+def families() -> Response:
+    payload = {family: list_units(family) for family in list_families()}
+    return jsonify({"families": list(payload.keys()), "units": payload})
+
+
+@bp.get("/api/v1/units/<family>")
+def units_endpoint(family: str) -> Response:
+    try:
+        units = list_units(family)
+    except BadInputError as exc:
+        return _format_error(str(exc), 400)
+    return jsonify({"family": family, "units": units})
+
+
+def _parse_precision(payload: dict) -> dict:
+    sig_figs = payload.get("sig_figs")
+    decimals = payload.get("decimals")
+    notation = payload.get("notation", "auto")
+    return {"sig_figs": sig_figs, "decimals": decimals, "notation": notation}
 
 
 @bp.post("/api/v1/convert")
 def convert_endpoint() -> Response:
-    payload = request.get_json() or {}
+    payload = request.get_json(silent=True) or {}
+    value = payload.get("value")
+    from_unit = payload.get("from_unit")
+    to_unit = payload.get("to_unit")
+    mode = payload.get("mode", "absolute")
     try:
-        value = float(payload.get("value"))
-        category = payload.get("category", "")
-        from_unit = payload.get("from_unit", "")
-        to_unit = payload.get("to_unit", "")
-    except (TypeError, ValueError):
-        return jsonify({"error": "Invalid value"}), 400
+        result = convert(value, from_unit, to_unit, mode=mode, **_parse_precision(payload))
+    except (BadInputError, InvalidUnitError) as exc:
+        return _format_error(str(exc), 400)
+    except DimensionMismatchError as exc:
+        return _format_error(str(exc), 422)
+    return jsonify(result)
 
+
+@bp.post("/api/v1/expressions")
+def expression_endpoint() -> Response:
+    payload = request.get_json(silent=True) or {}
+    expression = payload.get("expression")
+    target = payload.get("target")
     try:
-        result = convert(value, category, from_unit, to_unit)
-    except ConversionError as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify({"result": result})
-
-
-@bp.get("/api/v1/units")
-def units() -> Response:
-    return jsonify(available_units())
+        result = convert_expression(
+            expression,
+            target=target,
+            **_parse_precision(payload),
+        )
+    except (BadInputError, InvalidUnitError) as exc:
+        return _format_error(str(exc), 400)
+    except DimensionMismatchError as exc:
+        return _format_error(str(exc), 422)
+    return jsonify(result)

@@ -2,7 +2,7 @@
 
 manifest = {
     "title": "Tabular ML",
-    "summary": "Train lightweight models on CSV data without leaving the browser.",
+    "summary": "Profile datasets, explore scatter plots, and train lightweight models entirely offline.",
     "blueprint": "tabular_ml",
     "category": "Machine Learning",
     "icon": "img/tabular_icon.svg",

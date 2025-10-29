@@ -31,10 +31,10 @@ plugins:
       max_mb: 5
   tabular_ml:
     docs: "/help/tabular_ml"
-    summary: "Auto-detect ML tasks for CSV datasets and report model metrics."
+    summary: "Profile datasets, explore scatter plots, and auto-detect ML tasks."
     upload:
       max_files: 1
       max_mb: 2
   unit_converter:
     docs: "/help/unit_converter"
-    summary: "Convert engineering units with verified conversion factors."
+    summary: "Pint-backed conversions with interval support and expression evaluation."
