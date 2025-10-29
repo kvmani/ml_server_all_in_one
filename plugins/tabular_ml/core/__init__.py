@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass
-from io import BytesIO
+from io import BytesIO, StringIO
+import csv
 import math
 import threading
 import uuid
@@ -27,6 +28,8 @@ class TrainingResult:
     task: str
     metrics: Dict[str, float]
     feature_importance: Dict[str, float]
+    evaluation: List[Dict[str, object]]
+    evaluation_columns: List[str]
 
 
 @dataclass
@@ -71,6 +74,17 @@ class DatasetStore:
 
 
 _STORE = DatasetStore()
+_LATEST_RESULTS: "OrderedDict[str, TrainingResult]" = OrderedDict()
+
+
+def _row_identifier(index: object) -> object:
+    if isinstance(index, (int, np.integer)):
+        return int(index)
+    return str(index)
+
+
+def _to_python(value: object) -> object:
+    return value.item() if hasattr(value, "item") else value
 
 
 def load_dataset(data: bytes) -> pd.DataFrame:
@@ -130,6 +144,7 @@ def get_dataset(dataset_id: str) -> pd.DataFrame:
 
 def drop_dataset(dataset_id: str) -> None:
     _STORE.remove(dataset_id)
+    _LATEST_RESULTS.pop(dataset_id, None)
 
 
 def scatter_points(dataset_id: str, x: str, y: str, color: Optional[str] = None, *, max_points: int = 400) -> Dict[str, object]:
@@ -182,7 +197,12 @@ def _is_classification(y: pd.Series) -> bool:
 
 def train_on_dataset(dataset_id: str, target: str) -> TrainingResult:
     df = get_dataset(dataset_id)
-    return train_model(df, target)
+    result = train_model(df, target)
+    _LATEST_RESULTS[dataset_id] = result
+    # Keep only a small number of cached results
+    while len(_LATEST_RESULTS) > _STORE.max_items:
+        _LATEST_RESULTS.popitem(last=False)
+    return result
 
 
 def train_model(df: pd.DataFrame, target: str) -> TrainingResult:
@@ -215,23 +235,77 @@ def train_model(df: pd.DataFrame, target: str) -> TrainingResult:
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
+    evaluation: List[Dict[str, object]] = []
+    evaluation_columns: List[str] = ["row_index", "actual", "predicted", "residual"]
+
     if task == "classification":
         model = LogisticRegression(max_iter=1000)
         model.fit(X_train_scaled, y_train)
         preds = model.predict(X_test_scaled)
         metrics = {"accuracy": float(accuracy_score(y_test, preds))}
         importance_values = np.abs(model.coef_).mean(axis=0)
+        proba_values: Optional[np.ndarray] = None
+        if hasattr(model, "predict_proba"):
+            proba_values = model.predict_proba(X_test_scaled)
+            if proba_values.size:
+                evaluation_columns.append("confidence")
+        classes: Optional[List[object]] = list(model.classes_) if proba_values is not None else None
+        for position, (idx, predicted) in enumerate(zip(y_test.index, preds)):
+            actual_value = y_test.iloc[position]
+            row: Dict[str, object] = {
+                "row_index": _row_identifier(idx),
+                "actual": _to_python(actual_value),
+                "predicted": _to_python(predicted),
+                "residual": float(predicted != actual_value),
+            }
+            if proba_values is not None and classes:
+                try:
+                    class_index = classes.index(row["predicted"])
+                except ValueError:  # pragma: no cover - defensive
+                    class_index = None
+                if class_index is not None:
+                    row["confidence"] = float(proba_values[position][class_index])
+            evaluation.append(row)
     else:
         model = Ridge(alpha=1.0)
         model.fit(X_train_scaled, y_train)
         preds = model.predict(X_test_scaled)
         metrics = {"rmse": float(np.sqrt(mean_squared_error(y_test, preds)))}
         importance_values = np.abs(model.coef_)
+        for idx, predicted, actual_value in zip(y_test.index, preds, y_test):
+            predicted_value = float(predicted)
+            actual_scalar = float(actual_value)
+            row = {
+                "row_index": _row_identifier(idx),
+                "actual": actual_scalar,
+                "predicted": predicted_value,
+                "residual": float(predicted_value - actual_scalar),
+            }
+            evaluation.append(row)
 
     importance = dict(zip(X.columns, importance_values))
     # Sort by magnitude descending
     importance = dict(sorted(importance.items(), key=lambda item: item[1], reverse=True))
-    return TrainingResult(task=task, metrics=metrics, feature_importance=importance)
+    return TrainingResult(
+        task=task,
+        metrics=metrics,
+        feature_importance=importance,
+        evaluation=evaluation,
+        evaluation_columns=evaluation_columns,
+    )
+
+
+def latest_result(dataset_id: str) -> Optional[TrainingResult]:
+    return _LATEST_RESULTS.get(dataset_id)
+
+
+def export_predictions_csv(result: TrainingResult) -> bytes:
+    buffer = StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=result.evaluation_columns)
+    writer.writeheader()
+    for record in result.evaluation:
+        writer.writerow({column: record.get(column, "") for column in result.evaluation_columns})
+    return buffer.getvalue().encode("utf-8")
 
 
 __all__ = [
@@ -243,7 +317,9 @@ __all__ = [
     "get_dataset",
     "load_dataset",
     "register_dataset",
+    "latest_result",
     "scatter_points",
+    "export_predictions_csv",
     "train_model",
     "train_on_dataset",
 ]

@@ -1,4 +1,4 @@
-import { bindForm, setupDropzone } from "/static/js/core.js";
+import { bindForm, downloadBlob, setupDropzone } from "/static/js/core.js";
 
 const datasetForm = document.getElementById("dataset-form");
 const datasetInput = document.getElementById("dataset");
@@ -24,10 +24,15 @@ const results = document.getElementById("train-results");
 const taskEl = document.getElementById("task");
 const metricsEl = document.getElementById("metrics");
 const importanceEl = document.getElementById("importance");
+const predictionTable = document.getElementById("prediction-table");
+const downloadPredictions = document.getElementById("download-predictions");
+const downloadJson = document.getElementById("download-json");
 
 let currentDatasetId = null;
 let currentColumns = [];
 let currentNumericColumns = [];
+let currentPredictionColumns = [];
+let hasPredictions = false;
 
 function titleCase(text) {
   if (!text) return "";
@@ -52,7 +57,55 @@ function setFormsEnabled(enabled) {
     metricsEl.innerHTML = "";
     importanceEl.innerHTML = "";
     clearScatter();
+    if (predictionTable) {
+      predictionTable.innerHTML = "";
+    }
+    hasPredictions = false;
+    togglePredictionButtons(false);
   }
+}
+
+function togglePredictionButtons(available) {
+  hasPredictions = available;
+  [downloadPredictions, downloadJson].forEach((button) => {
+    if (!button) return;
+    button.disabled = !available;
+  });
+}
+
+function renderPredictionPreview(columns, rows) {
+  if (!predictionTable) return;
+  predictionTable.innerHTML = "";
+  if (!columns?.length || !rows?.length) {
+    predictionTable.innerHTML = "<caption>No predictions available yet.</caption>";
+    togglePredictionButtons(false);
+    return;
+  }
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  columns.forEach((column) => {
+    const th = document.createElement("th");
+    th.textContent = column.replace(/_/g, " ");
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  const tbody = document.createElement("tbody");
+  rows.slice(0, 5).forEach((row) => {
+    const tr = document.createElement("tr");
+    columns.forEach((column) => {
+      const td = document.createElement("td");
+      let value = row[column];
+      if (typeof value === "number") {
+        value = Number.isFinite(value) ? value.toPrecision(5) : value;
+      }
+      td.textContent = value ?? "";
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  predictionTable.appendChild(thead);
+  predictionTable.appendChild(tbody);
+  togglePredictionButtons(true);
 }
 
 function renderPreview(preview, columns) {
@@ -310,6 +363,11 @@ datasetClear.addEventListener("click", async () => {
   setFormsEnabled(false);
   clearScatter();
   datasetController.setStatus("Dataset removed", "info");
+  if (predictionTable) {
+    predictionTable.innerHTML = "";
+  }
+  togglePredictionButtons(false);
+  currentPredictionColumns = [];
 });
 
 const scatterController = bindForm(scatterForm, {
@@ -389,6 +447,8 @@ const trainController = bindForm(trainForm, {
         importanceEl.appendChild(li);
       });
     results.hidden = false;
+    currentPredictionColumns = data.columns || [];
+    renderPredictionPreview(currentPredictionColumns, data.preview || []);
   },
 });
 
@@ -397,5 +457,46 @@ trainReset.addEventListener("click", () => {
   results.hidden = true;
   metricsEl.innerHTML = "";
   importanceEl.innerHTML = "";
+  if (predictionTable) {
+    predictionTable.innerHTML = "";
+  }
+  togglePredictionButtons(false);
   trainController.setStatus("Ready", "info");
 });
+
+async function fetchPredictions(format = "csv") {
+  if (!currentDatasetId || !hasPredictions) {
+    throw new Error("Train a model before downloading predictions");
+  }
+  const response = await fetch(`/tabular_ml/api/v1/datasets/${currentDatasetId}/predictions?format=${format}`);
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || "Unable to download predictions");
+  }
+  return response;
+}
+
+if (downloadPredictions) {
+  downloadPredictions.addEventListener("click", async () => {
+    try {
+      const response = await fetchPredictions("csv");
+      const blob = await response.blob();
+      downloadBlob(blob, "predictions.csv");
+    } catch (error) {
+      trainController.setStatus(error instanceof Error ? error.message : "Download failed", "error");
+    }
+  });
+}
+
+if (downloadJson) {
+  downloadJson.addEventListener("click", async () => {
+    try {
+      const response = await fetchPredictions("json");
+      const payload = await response.json();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      downloadBlob(blob, "predictions.json");
+    } catch (error) {
+      trainController.setStatus(error instanceof Error ? error.message : "Download failed", "error");
+    }
+  });
+}

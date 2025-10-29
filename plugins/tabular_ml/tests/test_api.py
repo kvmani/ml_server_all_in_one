@@ -34,6 +34,9 @@ def test_train_endpoint_success():
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["task"] == "classification"
+    assert payload["columns"]
+    assert payload["preview"]
+    assert payload["rows"] >= 1
 
 
 def test_scatter_endpoint():
@@ -64,3 +67,38 @@ def test_train_requires_target():
         json={},
     )
     assert response.status_code == 400
+
+
+def test_predictions_export_csv_and_json():
+    df = pd.DataFrame(
+        {
+            "feat1": [1, 2, 3, 4, 5, 6, 7, 8],
+            "feat2": [2, 3, 4, 5, 6, 7, 8, 9],
+            "target": [1, 2, 1, 2, 1, 2, 1, 2],
+        }
+    )
+    client = _make_client()
+    dataset_id = _upload_dataset(client, df)
+    client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/train",
+        json={"target": "target"},
+    )
+
+    csv_response = client.get(f"/tabular_ml/api/v1/datasets/{dataset_id}/predictions?format=csv")
+    assert csv_response.status_code == 200
+    assert csv_response.mimetype == "text/csv"
+    assert "attachment" in csv_response.headers.get("Content-Disposition", "")
+
+    json_response = client.get(f"/tabular_ml/api/v1/datasets/{dataset_id}/predictions?format=json")
+    assert json_response.status_code == 200
+    data = json_response.get_json()
+    assert data["columns"]
+    assert data["rows"]
+
+
+def test_predictions_require_training_first():
+    df = pd.DataFrame({"feat1": [1, 2, 3], "target": [0, 1, 0]})
+    client = _make_client()
+    dataset_id = _upload_dataset(client, df)
+    response = client.get(f"/tabular_ml/api/v1/datasets/{dataset_id}/predictions")
+    assert response.status_code == 404
