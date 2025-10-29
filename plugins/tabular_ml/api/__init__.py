@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from flask import Blueprint, Response, current_app, jsonify, render_template, request
+from io import BytesIO
+
+from flask import Blueprint, Response, current_app, jsonify, render_template, request, send_file
 
 from app.security import validate_mime
 from common.validate import FileLimit, ValidationError, enforce_limits
@@ -10,7 +12,9 @@ from ..core import (
     TabularError,
     build_profile,
     drop_dataset,
+    export_predictions_csv,
     get_dataset,
+    latest_result,
     register_dataset,
     scatter_points,
     train_on_dataset,
@@ -104,8 +108,34 @@ def train(dataset_id: str) -> Response:
             "task": result.task,
             "metrics": result.metrics,
             "feature_importance": result.feature_importance,
+            "columns": result.evaluation_columns,
+            "preview": result.evaluation[:5],
+            "rows": len(result.evaluation),
         }
     )
+
+
+@bp.get("/api/v1/datasets/<dataset_id>/predictions")
+def predictions(dataset_id: str) -> Response:
+    result = latest_result(dataset_id)
+    if not result:
+        return jsonify({"error": "Train a model before exporting predictions"}), 404
+
+    fmt = (request.args.get("format") or "json").lower()
+    if fmt == "csv":
+        csv_bytes = export_predictions_csv(result)
+        buffer = BytesIO(csv_bytes)
+        buffer.seek(0)
+        filename = f"{dataset_id[:8]}_predictions.csv"
+        return send_file(
+            buffer,
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name=filename,
+            max_age=0,
+        )
+
+    return jsonify({"columns": result.evaluation_columns, "rows": result.evaluation})
 
 
 @bp.get("/api/v1/datasets/<dataset_id>/profile")

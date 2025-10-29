@@ -75,6 +75,16 @@ def create_app(config_name: str | None = None) -> Flask:
 
     register_plugin_blueprints(app)
 
+    @app.after_request
+    def apply_response_headers(response):
+        """Attach strict security headers to every outgoing response."""
+
+        configured = app.config.get("RESPONSE_HEADERS", {})
+        for header, value in configured.items():
+            if header not in response.headers:
+                response.headers[header] = value
+        return response
+
     manifests = _load_manifests()
     for manifest in manifests:
         blueprint = manifest.get("blueprint")

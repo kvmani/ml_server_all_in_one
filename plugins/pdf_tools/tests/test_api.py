@@ -83,3 +83,12 @@ def test_metadata_endpoint_reports_pages_and_size():
     payload = response.get_json()
     assert payload["pages"] == 3
     assert payload["size_bytes"] > 0
+
+
+def test_metadata_rejects_fake_pdf_signature():
+    client = _make_client()
+    data = {"file": (BytesIO(b"not really a pdf"), "fake.pdf")}
+    response = client.post("/pdf_tools/api/v1/metadata", data=data, content_type="multipart/form-data")
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert "signature" in payload["error"].lower()

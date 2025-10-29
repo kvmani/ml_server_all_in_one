@@ -9,3 +9,5 @@ def test_home_lists_plugins():
     body = response.get_data(as_text=True)
     assert "Hydride Segmentation" in body
     assert "PDF Tools" in body
+    assert "data-tool-search" in body
+    assert response.headers.get("Content-Security-Policy")

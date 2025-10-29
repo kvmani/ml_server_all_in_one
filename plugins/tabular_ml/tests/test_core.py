@@ -24,6 +24,9 @@ def test_load_dataset_and_train_classification():
     result = train_model(loaded, "target")
     assert result.task == "classification"
     assert "accuracy" in result.metrics
+    assert result.evaluation
+    assert "residual" in result.evaluation_columns
+    assert all(record["residual"] in (0.0, 1.0) for record in result.evaluation)
 
 
 def test_register_dataset_builds_profile():
@@ -32,6 +35,20 @@ def test_register_dataset_builds_profile():
     assert profile.dataset_id
     assert len(profile.columns) == 3
     assert profile.numeric_columns
+
+
+def test_train_model_produces_residuals_for_regression():
+    df = pd.DataFrame(
+        {
+            "feat": [value / 10 for value in range(1, 31)],
+            "target": [value / 5 for value in range(1, 31)],
+        }
+    )
+    result = train_model(df, "target")
+    assert result.task == "regression"
+    assert "rmse" in result.metrics
+    assert result.evaluation
+    assert any(abs(record["residual"]) > 0 for record in result.evaluation)
 
 
 def test_scatter_points_requires_numeric_columns():

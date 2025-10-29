@@ -17,6 +17,40 @@
 
   <div class="shell">
     {% if plugins %}
+      <section class="surface-block discovery-panel" aria-label="Tool discovery controls">
+        <div class="discovery-panel__grid">
+          <div>
+            <label class="form-field__label" for="tool-search">
+              Search tools
+              <span class="form-field__hint">Filter by title, summary, or capability tags. Press <kbd>/</kbd> to focus.</span>
+            </label>
+            <input id="tool-search" class="tool-search" type="search" placeholder="e.g. segmentation" autocomplete="off" data-tool-search aria-describedby="tool-search-hint">
+            <p class="form-field__hint" id="tool-search-hint">Filters update as you type.</p>
+            <div class="discovery-categories" role="list">
+              <button class="badge badge--interactive" type="button" data-tool-category="all">All tools</button>
+              {% for group in plugins|groupby('category') %}
+                {% set category = group.grouper or 'Tools' %}
+                <button class="badge badge--interactive" type="button" data-tool-category="{{ category }}">{{ category }}</button>
+              {% endfor %}
+            </div>
+          </div>
+          <aside class="discovery-preview" data-tool-preview hidden aria-live="polite">
+            <p class="tool-card__category" data-tool-preview-category></p>
+            <h2 class="section-heading discovery-preview__title" data-tool-preview-title></h2>
+            <p class="discovery-preview__summary" data-tool-preview-summary></p>
+            <dl class="discovery-preview__meta">
+              <div>
+                <dt>Launch</dt>
+                <dd><a class="btn btn--subtle" data-tool-preview-launch data-keep-theme href="#">Open tool</a></dd>
+              </div>
+              <div>
+                <dt>Documentation</dt>
+                <dd><a class="btn btn--ghost" data-tool-preview-docs data-keep-theme href="#">View guide</a></dd>
+              </div>
+            </dl>
+          </aside>
+        </div>
+      </section>
       {% set descriptions = {
         'Microstructural Analysis': 'Advanced microscopy tooling with parameterised pipelines and live previews.',
         'Document Utilities': 'Fast, offline-safe document manipulation with drag-and-drop simplicity.',
@@ -31,10 +65,11 @@
             <h2 class="section-heading">{{ category }}</h2>
             <p class="hero__subtitle">{{ descriptions.get(category, 'Launch any tool with a consistent experience across the platform.') }}</p>
           </header>
-          <div class="card-grid" role="list">
+          <div class="card-grid" role="list" data-tool-section="{{ category }}">
             {% for plugin in group.list %}
               {% set icon_url = plugin.icon and url_for(plugin.blueprint ~ '.static', filename=plugin.icon) %}
-              <article class="tool-card" role="listitem">
+              {% set tags = (plugin.tags if plugin.tags is defined else []) or [] %}
+              <article class="tool-card" role="listitem" data-tool-card data-tool-title="{{ plugin.title }}" data-tool-category="{{ plugin.category or 'Toolkit' }}" data-tool-summary="{{ plugin.summary }}" data-tool-tags="{{ tags|join(' ') }}" data-tool-launch="{{ url_for(plugin.blueprint ~ '.index', theme=current_theme) }}" {% if plugin.docs %}data-tool-docs="{{ plugin.docs }}{% if '?' in plugin.docs %}&{% else %}?{% endif %}theme={{ current_theme }}"{% endif %}>
                 <div class="tool-card__icon" aria-hidden="true">
                   {% if icon_url %}
                     <img src="{{ icon_url }}" alt="" loading="lazy">
@@ -50,14 +85,19 @@
                   {% if plugin.docs %}
                     <a class="btn btn--subtle" data-keep-theme href="{{ plugin.docs }}{% if '?' in plugin.docs %}&{% else %}?{% endif %}theme={{ current_theme }}">Read guide</a>
                   {% endif %}
+                  <button class="btn btn--ghost" type="button" data-tool-preview-trigger>Quick view</button>
                 </div>
               </article>
             {% endfor %}
           </div>
         </section>
       {% endfor %}
+      <p class="surface-muted discovery-empty" data-tool-empty hidden role="status">No tools match the current filters. Adjust the search or category to continue.</p>
     {% else %}
       <p class="surface-block" role="status">No tools are currently registered. Add a plugin package under <code>plugins/</code> to get started.</p>
     {% endif %}
   </div>
+{% endblock %}
+{% block scripts %}
+  <script type="module" src="{{ url_for('static', filename='js/home.js') }}"></script>
 {% endblock %}
