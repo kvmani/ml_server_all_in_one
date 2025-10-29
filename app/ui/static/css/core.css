@@ -1,0 +1,86 @@
+:root {
+  --bg: #10131a;
+  --fg: #f6f7f9;
+  --accent: #4fc3f7;
+  --card-bg: #1c2333;
+  --border: #2a3145;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.site-header,
+.site-footer {
+  padding: 1.5rem clamp(2rem, 5vw, 4rem);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.site-header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+main {
+  flex: 1;
+  padding: 2rem clamp(2rem, 5vw, 5rem);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1.5rem;
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.btn {
+  align-self: flex-start;
+  background: var(--accent);
+  color: #05293b;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.btn:focus-visible {
+  outline: 3px solid white;
+  outline-offset: 3px;
+}
+
+.empty {
+  color: #9aa3b5;
+}
+
+.toast {
+  background: rgba(79, 195, 247, 0.1);
+  border: 1px solid rgba(79, 195, 247, 0.5);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}

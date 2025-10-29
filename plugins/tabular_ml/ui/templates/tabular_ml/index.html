@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Tabular ML{% endblock %}
+{% block content %}
+<section class="tool">
+  <h2>Tabular ML</h2>
+  <form id="train-form" enctype="multipart/form-data">
+    <label for="dataset">CSV dataset</label>
+    <input id="dataset" name="dataset" type="file" accept="text/csv" required>
+    <label for="target">Target column</label>
+    <input id="target" name="target" required>
+    <button class="btn" type="submit">Train model</button>
+    <p data-role="status" aria-live="polite"></p>
+  </form>
+  <div id="train-results" hidden>
+    <h3>Results</h3>
+    <p id="task"></p>
+    <dl id="metrics"></dl>
+    <h4>Feature importance</h4>
+    <ul id="importance"></ul>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{{ url_for('tabular_ml.static', filename='js/index.js') }}"></script>
+{% endblock %}

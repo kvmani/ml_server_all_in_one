@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Unit Converter{% endblock %}
+{% block content %}
+<section class="tool">
+  <h2>Unit Converter</h2>
+  <form id="converter-form">
+    <label for="category">Category</label>
+    <select id="category" name="category">
+      {% for category in units %}
+        <option value="{{ category }}">{{ category|capitalize }}</option>
+      {% endfor %}
+    </select>
+    <label for="value">Value</label>
+    <input id="value" name="value" type="number" step="any" required>
+    <label for="from-unit">From</label>
+    <select id="from-unit" name="from_unit"></select>
+    <label for="to-unit">To</label>
+    <select id="to-unit" name="to_unit"></select>
+    <button class="btn" type="submit">Convert</button>
+    <p data-role="status" aria-live="polite"></p>
+  </form>
+  <p id="result" aria-live="polite"></p>
+</section>
+{% endblock %}
+{% block scripts %}
+<script type="module">
+  import { bindForm } from '/static/js/core.js';
+  const units = {{ units|tojson }};
+  const category = document.getElementById('category');
+  const fromUnit = document.getElementById('from-unit');
+  const toUnit = document.getElementById('to-unit');
+  function populate(unitsList) {
+    fromUnit.innerHTML = '';
+    toUnit.innerHTML = '';
+    unitsList.forEach((unit) => {
+      const option1 = document.createElement('option');
+      option1.value = unit;
+      option1.textContent = unit;
+      fromUnit.appendChild(option1);
+      const option2 = option1.cloneNode(true);
+      toUnit.appendChild(option2);
+    });
+    toUnit.selectedIndex = Math.min(1, unitsList.length - 1);
+  }
+  populate(units[category.value]);
+  category.addEventListener('change', () => {
+    populate(units[category.value]);
+  });
+  const form = document.getElementById('converter-form');
+  const resultEl = document.getElementById('result');
+  bindForm(form, {
+    async onSubmit() {
+      const payload = {
+        value: parseFloat(form.value.value),
+        category: form.category.value,
+        from_unit: form['from_unit'].value,
+        to_unit: form['to_unit'].value,
+      };
+      const response = await fetch('/unit_converter/api/v1/convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Conversion failed');
+      }
+      resultEl.textContent = `${payload.value} ${payload.from_unit} = ${data.result.toFixed(4)} ${payload.to_unit}`;
+    },
+  });
+</script>
+{% endblock %}
