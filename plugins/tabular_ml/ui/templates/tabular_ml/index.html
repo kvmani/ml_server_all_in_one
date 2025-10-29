@@ -1,24 +1,88 @@
 {% extends "base.html" %}
 {% block title %}Tabular ML{% endblock %}
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('tabular_ml.static', filename='css/index.css') }}">
+{% endblock %}
 {% block content %}
-<section class="tool">
-  <h2>Tabular ML</h2>
-  <form id="train-form" enctype="multipart/form-data">
-    <label for="dataset">CSV dataset</label>
-    <input id="dataset" name="dataset" type="file" accept="text/csv" required>
-    <label for="target">Target column</label>
-    <input id="target" name="target" required>
-    <button class="btn" type="submit">Train model</button>
-    <p data-role="status" aria-live="polite"></p>
-  </form>
-  <div id="train-results" hidden>
-    <h3>Results</h3>
-    <p id="task"></p>
-    <dl id="metrics"></dl>
-    <h4>Feature importance</h4>
-    <ul id="importance"></ul>
-  </div>
-</section>
+  {% set upload_settings = plugin_settings.get('upload', {}) %}
+  {% set docs_url = plugin_settings.get('docs') %}
+  {% if docs_url %}
+    {% set help_href = docs_url + ('&' if '?' in docs_url else '?') + 'theme=' + current_theme %}
+  {% else %}
+    {% set help_href = url_for('help_page', slug='tabular_ml', theme=current_theme) %}
+  {% endif %}
+  <section class="shell surface-block tabular-shell" aria-labelledby="tabular-ml-title">
+    <div class="tool-shell__layout">
+      <aside class="tool-shell__intro">
+        <div class="tool-shell__icon" aria-hidden="true">
+          <img src="{{ url_for('tabular_ml.static', filename='img/tabular_icon.svg') }}" alt="">
+        </div>
+        <p class="tool-card__category">Machine Learning</p>
+        <h1 id="tabular-ml-title" class="section-heading">Tabular ML sandbox</h1>
+        <p>
+          Train lightweight regression or classification models on CSV data entirely in memory. Upload a dataset, select a
+          target column, and review validation metrics and feature importances without leaving the browser.
+        </p>
+        <ul>
+          <li>Automatic task detection (classification or regression)</li>
+          <li>Feature importance ranked for the top five predictors</li>
+          <li>Export-ready metrics with consistent decimal precision</li>
+        </ul>
+        <div class="tool-shell__actions">
+          <a class="btn btn--subtle" data-keep-theme href="{{ help_href }}">Read ML guide</a>
+        </div>
+      </aside>
+
+      <div class="tool-shell__workspace">
+        <form id="train-form" class="surface-muted form-grid" enctype="multipart/form-data" novalidate>
+          <div class="dropzone" id="dataset-dropzone">
+            <div class="dropzone__copy">
+              <h2 class="section-heading">Drop CSV dataset</h2>
+              <p class="dropzone__hint">Data remains in this session. Max size {{ upload_settings.get('max_mb', 2) }} MB. Ensure the first row contains column headers.</p>
+              <p class="dropzone__hint" id="dataset-name" aria-live="polite"></p>
+            </div>
+            <div class="dropzone__actions">
+              <button class="btn" type="button" id="dataset-browse">Browse CSV</button>
+            </div>
+            <input id="dataset" name="dataset" type="file" accept="text/csv,application/vnd.ms-excel" class="visually-hidden" required>
+          </div>
+          <div class="form-field">
+            <label class="form-field__label" for="target">
+              Target column
+              <button type="button" class="tooltip-trigger" data-tooltip="Provide the column name to predict. The model infers the task type automatically." aria-label="Target column help">?</button>
+            </label>
+            <input id="target" name="target" placeholder="e.g. hardness" required>
+            <p class="form-field__hint">Matches the header name in the CSV file.</p>
+          </div>
+          <div class="form-actions">
+            <button class="btn" type="submit">Train model</button>
+            <button class="btn btn--ghost" type="reset" id="train-reset">Reset</button>
+          </div>
+          <p class="status-text" data-role="status" aria-live="polite"></p>
+        </form>
+
+        <section id="train-results" class="surface-muted tabular-results" hidden aria-live="polite">
+          <header class="tabular-results__header">
+            <div>
+              <p class="tool-card__category">Training results</p>
+              <h2 class="form-section__title">Performance summary</h2>
+            </div>
+            <p id="task" class="badge"></p>
+          </header>
+          <div class="tabular-results__grid">
+            <div>
+              <h3 class="form-section__title">Metrics</h3>
+              <dl id="metrics" class="tabular-metrics"></dl>
+            </div>
+            <div>
+              <h3 class="form-section__title">Top features</h3>
+              <ul id="importance" class="tabular-importance list-reset"></ul>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
 {% endblock %}
 {% block scripts %}
 <script type="module" src="{{ url_for('tabular_ml.static', filename='js/index.js') }}"></script>

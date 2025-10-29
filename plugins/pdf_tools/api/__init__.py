@@ -4,12 +4,12 @@ import base64
 import json
 from io import BytesIO
 
-from flask import Blueprint, Response, jsonify, render_template, request, send_file
+from flask import Blueprint, Response, current_app, jsonify, render_template, request, send_file
 
 from app.security import secure_filename, validate_mime
 from common.validate import FileLimit, ValidationError, enforce_limits
 
-from ..core import MergeSpec, PageRangeError, merge_pdfs, split_pdf
+from ..core import MergeSpec, PageRangeError, merge_pdfs, pdf_metadata, split_pdf
 
 bp = Blueprint(
     "pdf_tools",
@@ -20,12 +20,42 @@ bp = Blueprint(
     static_url_path="/static/pdf_tools",
 )
 
-MERGE_LIMIT = FileLimit(max_files=10, max_size=5 * 1024 * 1024)
-
-
 @bp.get("/")
 def index() -> str:
-    return render_template("pdf_tools/index.html")
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("pdf_tools", {})
+    return render_template("pdf_tools/index.html", plugin_settings=settings)
+
+
+def _merge_limit() -> FileLimit:
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("pdf_tools", {})
+    upload = settings.get("merge_upload", {})
+    max_files = upload.get("max_files", 10)
+    max_mb = upload.get("max_mb", 5)
+    try:
+        max_files_int = int(max_files)
+    except (TypeError, ValueError):
+        max_files_int = 10
+    try:
+        max_bytes = int(float(max_mb) * 1024 * 1024)
+    except (TypeError, ValueError):
+        max_bytes = 5 * 1024 * 1024
+    return FileLimit(max_files=max_files_int, max_size=max_bytes)
+
+
+def _split_limit() -> FileLimit:
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("pdf_tools", {})
+    upload = settings.get("split_upload", {})
+    max_mb = upload.get("max_mb", 5)
+    max_files = upload.get("max_files", 1)
+    try:
+        max_files_int = int(max_files)
+    except (TypeError, ValueError):
+        max_files_int = 1
+    try:
+        max_bytes = int(float(max_mb) * 1024 * 1024)
+    except (TypeError, ValueError):
+        max_bytes = 5 * 1024 * 1024
+    return FileLimit(max_files=max_files_int or 1, max_size=max_bytes)
 
 
 @bp.post("/api/v1/merge")
@@ -51,7 +81,7 @@ def merge() -> Response:
         uploads.append(file)
 
     try:
-        enforce_limits(uploads, MERGE_LIMIT)
+        enforce_limits(uploads, _merge_limit())
         validate_mime(uploads, {"application/pdf"})
     except (ValidationError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400
@@ -90,7 +120,7 @@ def split() -> Response:
     if not file:
         return jsonify({"error": "No file provided"}), 400
     try:
-        enforce_limits([file], FileLimit(max_files=1, max_size=5 * 1024 * 1024))
+        enforce_limits([file], _split_limit())
         validate_mime([file], {"application/pdf"})
     except (ValidationError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400
@@ -98,3 +128,26 @@ def split() -> Response:
     parts = split_pdf(file.read())
     payload = [base64.b64encode(part).decode("ascii") for part in parts]
     return jsonify({"pages": payload})
+
+
+@bp.post("/api/v1/metadata")
+def metadata() -> Response:
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "No file provided"}), 400
+
+    merge_limit = _merge_limit()
+    metadata_limit = FileLimit(max_files=1, max_size=merge_limit.max_size)
+
+    try:
+        enforce_limits([file], metadata_limit)
+        validate_mime([file], {"application/pdf"})
+    except (ValidationError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    try:
+        info = pdf_metadata(file.read())
+    except Exception:
+        return jsonify({"error": "Unable to read PDF"}), 400
+
+    return jsonify({"pages": info.pages, "size_bytes": info.size_bytes})

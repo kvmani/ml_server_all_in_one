@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from flask import Blueprint, Response, jsonify, render_template, request
+from flask import Blueprint, Response, current_app, jsonify, render_template, request
 from PIL import Image
 
 from app.security import validate_mime
@@ -19,7 +19,6 @@ from ..core import (
 )
 from ..core.image_io import image_to_png_base64
 
-HYDRIDE_LIMIT = FileLimit(max_files=1, max_size=5 * 1024 * 1024)
 ALLOWED_MIMES = {"image/png", "image/jpeg", "image/tiff"}
 
 
@@ -147,16 +146,33 @@ def _serialize_output(result: SegmentationOutput, model: str) -> dict:
     }
 
 
+def _plugin_limits() -> FileLimit:
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("hydride_segmentation", {})
+    upload = settings.get("upload", {})
+    max_files = upload.get("max_files", 1)
+    max_mb = upload.get("max_mb", 5)
+    try:
+        max_files_int = int(max_files)
+    except (TypeError, ValueError):
+        max_files_int = 1
+    try:
+        max_bytes = int(float(max_mb) * 1024 * 1024)
+    except (TypeError, ValueError):
+        max_bytes = 5 * 1024 * 1024
+    return FileLimit(max_files=max_files_int, max_size=max_bytes)
+
+
 @bp.get("/")
 def index() -> str:
-    return render_template("hydride_segmentation/index.html")
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("hydride_segmentation", {})
+    return render_template("hydride_segmentation/index.html", plugin_settings=settings)
 
 
 @bp.post("/api/v1/segment")
 def segment() -> Response:
     files = request.files.getlist("image")
     try:
-        enforce_limits(files, HYDRIDE_LIMIT)
+        enforce_limits(files, _plugin_limits())
         validate_mime(files, ALLOWED_MIMES)
         params = _parse_conventional_params(request.form)
     except (ValidationError, ValueError) as exc:

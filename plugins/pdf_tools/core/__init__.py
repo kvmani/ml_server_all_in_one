@@ -18,6 +18,14 @@ class MergeSpec:
     filename: str = "document.pdf"
 
 
+@dataclass(frozen=True)
+class PdfMetadata:
+    """Metadata extracted from a PDF document."""
+
+    pages: int
+    size_bytes: int
+
+
 def merge_pdfs(specs: Iterable[MergeSpec]) -> bytes:
     writer = PdfWriter()
     for spec in specs:
@@ -42,4 +50,17 @@ def split_pdf(stream: bytes) -> List[bytes]:
     return outputs
 
 
-__all__ = ["MergeSpec", "merge_pdfs", "split_pdf", "PageRangeError", "parse_page_range"]
+def pdf_metadata(data: bytes) -> PdfMetadata:
+    reader = PdfReader(BytesIO(data))
+    return PdfMetadata(pages=len(reader.pages), size_bytes=len(data))
+
+
+__all__ = [
+    "MergeSpec",
+    "PdfMetadata",
+    "merge_pdfs",
+    "split_pdf",
+    "pdf_metadata",
+    "PageRangeError",
+    "parse_page_range",
+]

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Help · Tabular ML{% endblock %}
+{% block content %}
+  {% set upload = plugin_settings.get('upload', {}) %}
+  <section class="shell surface-block help-content" aria-labelledby="tabular-help-title">
+    <header>
+      <p class="tool-card__category">Machine learning</p>
+      <h1 id="tabular-help-title" class="section-heading">Tabular ML guidance</h1>
+      <p class="hero__subtitle">Train offline models on CSV datasets with automatic task detection and feature importance reporting.</p>
+    </header>
+
+    <article class="surface-muted help-section">
+      <h2>Preparing datasets</h2>
+      <ul class="list-reset">
+        <li>Ensure the first row contains column headers; the target column must match the header exactly.</li>
+        <li>Clean missing values before upload—the tool currently drops rows with nulls to keep inference deterministic.</li>
+        <li>Limit file size to {{ upload.get('max_mb', 2) }} MB for responsive processing.</li>
+      </ul>
+    </article>
+
+    <article class="surface-muted help-section">
+      <h2>Training workflow</h2>
+      <ol>
+        <li>Upload the CSV and confirm the detected filename in the status banner.</li>
+        <li>Specify the target column. The backend infers whether to run classification (categorical target) or regression.</li>
+        <li>Submit the form to train a lightweight scikit-learn model. Metrics and top feature importances appear in the results panel.</li>
+        <li>Reset the workspace to experiment with alternative targets or preprocessed datasets.</li>
+      </ol>
+    </article>
+
+    <article class="surface-muted help-section">
+      <h2>Interpreting results</h2>
+      <ul class="list-reset">
+        <li><strong>Metrics:</strong> Classification reports accuracy and macro F1; regression reports R<sup>2</sup> and MAE.</li>
+        <li><strong>Feature importance:</strong> Derived from tree-based estimators; values are normalised to sum to 1.0.</li>
+        <li>Use the CSV of feature weights (download button in the UI) for lab notebooks or QA records.</li>
+      </ul>
+    </article>
+  </section>
+{% endblock %}

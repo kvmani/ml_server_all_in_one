@@ -1,15 +1,63 @@
 {% extends "base.html" %}
 {% block title %}Home · ML Server AIO{% endblock %}
 {% block content %}
-<section class="grid">
-  {% for plugin in plugins %}
-    <article class="card">
-      <h2>{{ plugin.title }}</h2>
-      <p>{{ plugin.summary }}</p>
-      <a class="btn" href="{{ url_for(plugin.blueprint + '.index') }}">Open</a>
-    </article>
-  {% else %}
-    <p class="empty">No tools available.</p>
-  {% endfor %}
-</section>
+  <section class="shell hero" aria-labelledby="home-hero-title">
+    <p class="hero__eyebrow">Unified toolkit</p>
+    <h1 id="home-hero-title" class="hero__title">Consistent offline ML experiences</h1>
+    <p class="hero__subtitle">
+      Launch segmentation, document, and analytics workflows from one privacy-first hub. Every tool runs in-memory with
+      a cohesive interface designed for lab technicians, researchers, and engineers working without internet access.
+    </p>
+    <div class="tag-list" role="list">
+      <span class="badge" role="listitem">No cloud uploads</span>
+      <span class="badge" role="listitem">Cross-browser ready</span>
+      <span class="badge" role="listitem">Keyboard accessible</span>
+    </div>
+  </section>
+
+  <div class="shell">
+    {% if plugins %}
+      {% set descriptions = {
+        'Microstructural Analysis': 'Advanced microscopy tooling with parameterised pipelines and live previews.',
+        'Document Utilities': 'Fast, offline-safe document manipulation with drag-and-drop simplicity.',
+        'Machine Learning': 'In-browser model training pipelines optimised for tabular datasets.',
+        'General Utilities': 'Everyday laboratory helpers with instant validation and clarity.'
+      } %}
+      {% for group in plugins|groupby('category') %}
+        {% set category = group.grouper or 'Tools' %}
+        <section class="surface-block" aria-label="{{ category }}">
+          <header>
+            <p class="tool-card__category">{{ category }}</p>
+            <h2 class="section-heading">{{ category }}</h2>
+            <p class="hero__subtitle">{{ descriptions.get(category, 'Launch any tool with a consistent experience across the platform.') }}</p>
+          </header>
+          <div class="card-grid" role="list">
+            {% for plugin in group.list %}
+              {% set icon_url = plugin.icon and url_for(plugin.blueprint ~ '.static', filename=plugin.icon) %}
+              <article class="tool-card" role="listitem">
+                <div class="tool-card__icon" aria-hidden="true">
+                  {% if icon_url %}
+                    <img src="{{ icon_url }}" alt="" loading="lazy">
+                  {% else %}
+                    <span class="tool-card__icon-fallback">{{ plugin.title[0] }}</span>
+                  {% endif %}
+                </div>
+                <p class="tool-card__category">{{ plugin.category or 'Toolkit' }}</p>
+                <h3 class="tool-card__title">{{ plugin.title }}</h3>
+                <p class="tool-card__summary">{{ plugin.summary }}</p>
+                <div class="tool-card__actions">
+                  <a class="btn" data-keep-theme href="{{ url_for(plugin.blueprint ~ '.index', theme=current_theme) }}">Launch tool</a>
+                  {% if plugin.docs %}
+                    <a class="btn btn--subtle" data-keep-theme href="{{ plugin.docs }}{% if '?' in plugin.docs %}&{% else %}?{% endif %}theme={{ current_theme }}">Read guide</a>
+                  {% endif %}
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+      {% endfor %}
+    {% else %}
+      <p class="surface-block" role="status">No tools are currently registered. Add a plugin package under <code>plugins/</code> to get started.</p>
+    {% endif %}
+  </div>
 {% endblock %}
