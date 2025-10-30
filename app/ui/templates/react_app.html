@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-theme="{{ current_theme }}" data-theme-options='{{ theme_options|tojson }}'>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ site_settings.name or 'ML Server AIO' }}</title>
+    {% for href in assets.preload %}
+    <link rel="modulepreload" href="{{ href }}">
+    {% endfor %}
+    {% for href in assets.styles %}
+    <link rel="stylesheet" href="{{ href }}">
+    {% endfor %}
+  </head>
+  <body>
+    <div id="root">
+      {% if not assets_built %}
+      <section class="shell" aria-live="polite">
+        <h1>React assets missing</h1>
+        <p>Run <code>npm install</code> and <code>npm run build</code> inside <code>frontend/</code> to generate the Vite bundle.</p>
+      </section>
+      {% endif %}
+    </div>
+    <script id="app-state" type="application/json">{{ initial_state|tojson }}</script>
+    {% for src in assets.scripts %}
+    <script type="module" src="{{ src }}"></script>
+    {% endfor %}
+  </body>
+</html>

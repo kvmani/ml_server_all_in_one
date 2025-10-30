@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from flask import Blueprint, Response, current_app, jsonify, render_template, request
+from flask import Blueprint, Response, current_app, jsonify, render_template, request, url_for
 from PIL import Image
 
 from app.security import validate_mime
@@ -29,7 +29,7 @@ bp = Blueprint(
     url_prefix="/hydride_segmentation",
     template_folder="../ui/templates",
     static_folder="../ui/static/hydride_segmentation",
-    static_url_path="/static/hydride_segmentation",
+    static_url_path="/static",
 )
 
 
@@ -153,7 +153,32 @@ def _plugin_limits() -> FileLimit:
 @bp.get("/")
 def index() -> str:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("hydride_segmentation", {})
-    return render_template("hydride_segmentation/index.html", plugin_settings=settings)
+    renderer = current_app.extensions.get("render_react")
+    if not renderer:
+        return render_template("hydride_segmentation/index.html", plugin_settings=settings)
+
+    theme_state = current_app.extensions.get("theme_state")
+    apply_theme = current_app.extensions.get("theme_url")
+    _, _, current_theme = theme_state() if callable(theme_state) else ({}, "midnight", "midnight")
+    theme_apply = apply_theme if callable(apply_theme) else (lambda value, _theme: value)
+
+    docs_url = settings.get("docs")
+    if docs_url:
+        help_href = theme_apply(docs_url, current_theme)
+    else:
+        help_href = theme_apply(url_for("help_page", slug="hydride_segmentation"), current_theme)
+
+    upload_settings = settings.get("upload", {}) or {}
+    try:
+        max_mb = float(upload_settings.get("max_mb", 5))
+    except (TypeError, ValueError):
+        max_mb = 5.0
+
+    props = {
+        "helpHref": help_href,
+        "maxMb": max_mb,
+    }
+    return renderer("hydride_segmentation", props)
 
 
 @bp.post("/api/v1/segment")

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, Response, current_app, jsonify, render_template, request
+from flask import Blueprint, Response, current_app, jsonify, render_template, request, url_for
 
 from ..core import (
     BadInputError,
@@ -21,7 +21,7 @@ bp = Blueprint(
     url_prefix="/unit_converter",
     template_folder="../ui/templates",
     static_folder="../ui/static",
-    static_url_path="/static/unit_converter",
+    static_url_path="/static",
 )
 
 
@@ -34,12 +34,31 @@ def index() -> str:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("unit_converter", {})
     families = list_families()
     units = {family: list_units(family) for family in families}
-    return render_template(
-        "unit_converter/index.html",
-        families=families,
-        units=units,
-        plugin_settings=settings,
-    )
+    renderer = current_app.extensions.get("render_react")
+    if not renderer:
+        return render_template(
+            "unit_converter/index.html",
+            families=families,
+            units=units,
+            plugin_settings=settings,
+        )
+
+    theme_state = current_app.extensions.get("theme_state")
+    apply_theme = current_app.extensions.get("theme_url")
+    _, _, current_theme = theme_state() if callable(theme_state) else ({}, "midnight", "midnight")
+    theme_apply = apply_theme if callable(apply_theme) else (lambda value, _theme: value)
+    docs_url = settings.get("docs")
+    if docs_url:
+        help_href = theme_apply(docs_url, current_theme)
+    else:
+        help_href = theme_apply(url_for("help_page", slug="unit_converter"), current_theme)
+
+    props = {
+        "families": families,
+        "units": units,
+        "helpHref": help_href,
+    }
+    return renderer("unit_converter", props)
 
 
 @bp.get("/api/v1/families")

@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 *.pyo
 *.DS_Store
+frontend/node_modules/
+app/ui/static/react/
