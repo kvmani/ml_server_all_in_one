@@ -64,6 +64,19 @@
     <main id="main" class="site-main" tabindex="-1">
       {% block content %}{% endblock %}
     </main>
+    <section class="log-window" data-log-window data-state="collapsed" aria-label="Activity log">
+      <header class="log-window__header">
+        <button class="log-window__toggle" type="button" data-log-toggle aria-expanded="false">
+          <span class="log-window__icon" aria-hidden="true">⌘</span>
+          <span class="log-window__title">Activity log</span>
+        </button>
+        <div class="log-window__actions">
+          <button class="log-window__action" type="button" data-log-clear>Clear</button>
+        </div>
+      </header>
+      <ol class="log-window__list" data-log-list></ol>
+      <p class="log-window__empty" data-log-empty>No recent activity yet.</p>
+    </section>
     <footer class="site-footer" role="contentinfo">
       <div class="shell">
         <p class="site-footer__tagline">{{ site_settings.description or 'Offline only · Privacy first · Built for labs' }}</p>

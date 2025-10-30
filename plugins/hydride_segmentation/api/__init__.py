@@ -6,6 +6,7 @@ from flask import Blueprint, Response, current_app, jsonify, render_template, re
 from PIL import Image
 
 from app.security import validate_mime
+from common.forms import get_bool, get_float, get_int
 from common.validate import FileLimit, ValidationError, enforce_limits
 
 from ..core import (
@@ -32,79 +33,78 @@ bp = Blueprint(
 )
 
 
-def _parse_float(value: str | None, *, field: str, default: float) -> float:
-    if value is None or value.strip() == "":
-        return default
-    try:
-        return float(value)
-    except ValueError as exc:
-        raise ValidationError(f"Invalid value for {field}") from exc
-
-
-def _parse_int(value: str | None, *, field: str, default: int, minimum: int | None = None) -> int:
-    if value is None or value.strip() == "":
-        result = default
-    else:
-        try:
-            result = int(float(value))
-        except ValueError as exc:
-            raise ValidationError(f"Invalid value for {field}") from exc
-    if minimum is not None and result < minimum:
-        raise ValidationError(f"{field} must be ≥ {minimum}")
-    return result
-
-
 def _parse_conventional_params(form) -> ConventionalParams:
     defaults = ConventionalParams()
-    clahe_clip = _parse_float(
-        form.get("clahe_clip_limit"), field="CLAHE clip limit", default=defaults.clahe_clip_limit
+    clahe_clip = get_float(
+        form,
+        "clahe_clip_limit",
+        defaults.clahe_clip_limit,
+        field_name="CLAHE clip limit",
+        minimum=0.01,
     )
-    clahe_x = _parse_int(
-        form.get("clahe_grid_x"), field="CLAHE tile width", default=defaults.clahe_tile_grid[0], minimum=1
+    clahe_x = get_int(
+        form,
+        "clahe_grid_x",
+        defaults.clahe_tile_grid[0],
+        field_name="CLAHE tile width",
+        minimum=1,
     )
-    clahe_y = _parse_int(
-        form.get("clahe_grid_y"), field="CLAHE tile height", default=defaults.clahe_tile_grid[1], minimum=1
+    clahe_y = get_int(
+        form,
+        "clahe_grid_y",
+        defaults.clahe_tile_grid[1],
+        field_name="CLAHE tile height",
+        minimum=1,
     )
-    adaptive_window = _parse_int(
-        form.get("adaptive_window"),
-        field="Adaptive window",
-        default=defaults.adaptive_window,
+    adaptive_window = get_int(
+        form,
+        "adaptive_window",
+        defaults.adaptive_window,
+        field_name="Adaptive window",
         minimum=3,
     )
-    adaptive_offset = _parse_int(
-        form.get("adaptive_offset"), field="Adaptive C", default=defaults.adaptive_offset
+    adaptive_offset = get_int(
+        form,
+        "adaptive_offset",
+        defaults.adaptive_offset,
+        field_name="Adaptive C",
     )
-    morph_x = _parse_int(
-        form.get("morph_kernel_x"),
-        field="Morph kernel width",
-        default=defaults.morph_kernel[0],
+    morph_x = get_int(
+        form,
+        "morph_kernel_x",
+        defaults.morph_kernel[0],
+        field_name="Morph kernel width",
         minimum=1,
     )
-    morph_y = _parse_int(
-        form.get("morph_kernel_y"),
-        field="Morph kernel height",
-        default=defaults.morph_kernel[1],
+    morph_y = get_int(
+        form,
+        "morph_kernel_y",
+        defaults.morph_kernel[1],
+        field_name="Morph kernel height",
         minimum=1,
     )
-    morph_iters = _parse_int(
-        form.get("morph_iterations"),
-        field="Morph iterations",
-        default=defaults.morph_iters,
+    morph_iters = get_int(
+        form,
+        "morph_iterations",
+        defaults.morph_iters,
+        field_name="Morph iterations",
         minimum=0,
     )
-    area_threshold = _parse_int(
-        form.get("area_threshold"),
-        field="Area threshold",
-        default=defaults.area_threshold,
+    area_threshold = get_int(
+        form,
+        "area_threshold",
+        defaults.area_threshold,
+        field_name="Area threshold",
         minimum=1,
     )
-    crop_percent = _parse_int(
-        form.get("crop_percent"),
-        field="Crop percent",
-        default=defaults.crop_percent,
+    crop_percent = get_int(
+        form,
+        "crop_percent",
+        defaults.crop_percent,
+        field_name="Crop percent",
         minimum=0,
     )
-    crop_enabled = form.get("crop_enabled") in {"1", "true", "on", "yes"}
+    crop_enabled = get_bool(form, "crop_enabled", default=False)
 
     return ConventionalParams(
         clahe_clip_limit=clahe_clip,
@@ -144,22 +144,10 @@ def _serialize_output(result: SegmentationOutput, model: str) -> dict:
         "analysis": analysis_payload,
         "logs": logs,
     }
-
-
 def _plugin_limits() -> FileLimit:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("hydride_segmentation", {})
-    upload = settings.get("upload", {})
-    max_files = upload.get("max_files", 1)
-    max_mb = upload.get("max_mb", 5)
-    try:
-        max_files_int = int(max_files)
-    except (TypeError, ValueError):
-        max_files_int = 1
-    try:
-        max_bytes = int(float(max_mb) * 1024 * 1024)
-    except (TypeError, ValueError):
-        max_bytes = 5 * 1024 * 1024
-    return FileLimit(max_files=max_files_int, max_size=max_bytes)
+    upload = settings.get("upload")
+    return FileLimit.from_settings(upload, default_max_files=1, default_max_mb=5)
 
 
 @bp.get("/")

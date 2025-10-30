@@ -28,34 +28,14 @@ def index() -> str:
 
 def _merge_limit() -> FileLimit:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("pdf_tools", {})
-    upload = settings.get("merge_upload", {})
-    max_files = upload.get("max_files", 10)
-    max_mb = upload.get("max_mb", 5)
-    try:
-        max_files_int = int(max_files)
-    except (TypeError, ValueError):
-        max_files_int = 10
-    try:
-        max_bytes = int(float(max_mb) * 1024 * 1024)
-    except (TypeError, ValueError):
-        max_bytes = 5 * 1024 * 1024
-    return FileLimit(max_files=max_files_int, max_size=max_bytes)
+    upload = settings.get("merge_upload")
+    return FileLimit.from_settings(upload, default_max_files=10, default_max_mb=5)
 
 
 def _split_limit() -> FileLimit:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("pdf_tools", {})
-    upload = settings.get("split_upload", {})
-    max_mb = upload.get("max_mb", 5)
-    max_files = upload.get("max_files", 1)
-    try:
-        max_files_int = int(max_files)
-    except (TypeError, ValueError):
-        max_files_int = 1
-    try:
-        max_bytes = int(float(max_mb) * 1024 * 1024)
-    except (TypeError, ValueError):
-        max_bytes = 5 * 1024 * 1024
-    return FileLimit(max_files=max_files_int or 1, max_size=max_bytes)
+    upload = settings.get("split_upload")
+    return FileLimit.from_settings(upload, default_max_files=1, default_max_mb=5)
 
 
 @bp.post("/api/v1/merge")
