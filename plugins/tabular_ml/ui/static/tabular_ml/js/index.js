@@ -22,6 +22,8 @@ const trainForm = document.getElementById("train-form");
 const trainReset = document.getElementById("train-reset");
 const results = document.getElementById("train-results");
 const taskEl = document.getElementById("task");
+const algorithmSelect = document.getElementById("algorithm");
+const algorithmBadge = document.getElementById("algorithm-used");
 const metricsEl = document.getElementById("metrics");
 const importanceEl = document.getElementById("importance");
 const predictionTable = document.getElementById("prediction-table");
@@ -62,6 +64,10 @@ function setFormsEnabled(enabled) {
     }
     hasPredictions = false;
     togglePredictionButtons(false);
+    if (algorithmBadge) {
+      algorithmBadge.textContent = "";
+      algorithmBadge.hidden = true;
+    }
   }
 }
 
@@ -315,6 +321,9 @@ const datasetController = bindForm(datasetForm, {
 
 datasetController.setStatus("Drop a CSV to begin", "info");
 setFormsEnabled(false);
+if (algorithmBadge) {
+  algorithmBadge.hidden = true;
+}
 
 setupDropzone(dropzone, datasetInput, {
   accept: "text/csv,application/vnd.ms-excel",
@@ -368,6 +377,13 @@ datasetClear.addEventListener("click", async () => {
   }
   togglePredictionButtons(false);
   currentPredictionColumns = [];
+  if (algorithmSelect) {
+    algorithmSelect.selectedIndex = 0;
+  }
+  if (algorithmBadge) {
+    algorithmBadge.textContent = "";
+    algorithmBadge.hidden = true;
+  }
 });
 
 const scatterController = bindForm(scatterForm, {
@@ -421,7 +437,10 @@ const trainController = bindForm(trainForm, {
     const response = await fetch(`/tabular_ml/api/v1/datasets/${currentDatasetId}/train`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target }),
+      body: JSON.stringify({
+        target,
+        algorithm: algorithmSelect?.value || "auto",
+      }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -447,6 +466,10 @@ const trainController = bindForm(trainForm, {
         importanceEl.appendChild(li);
       });
     results.hidden = false;
+    if (algorithmBadge) {
+      algorithmBadge.textContent = data.algorithm_label || "";
+      algorithmBadge.hidden = !data.algorithm_label;
+    }
     currentPredictionColumns = data.columns || [];
     renderPredictionPreview(currentPredictionColumns, data.preview || []);
   },
@@ -461,6 +484,13 @@ trainReset.addEventListener("click", () => {
     predictionTable.innerHTML = "";
   }
   togglePredictionButtons(false);
+  if (algorithmSelect) {
+    algorithmSelect.selectedIndex = 0;
+  }
+  if (algorithmBadge) {
+    algorithmBadge.textContent = "";
+    algorithmBadge.hidden = true;
+  }
   trainController.setStatus("Ready", "info");
 });
 

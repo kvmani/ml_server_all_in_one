@@ -99,13 +99,18 @@ def train(dataset_id: str) -> Response:
     target = payload.get("target")
     if not target:
         return jsonify({"error": "Target column is required"}), 400
+    algorithm = payload.get("algorithm", "auto")
+    if not isinstance(algorithm, str):
+        return jsonify({"error": "Algorithm must be a string"}), 400
     try:
-        result = train_on_dataset(dataset_id, target)
+        result = train_on_dataset(dataset_id, target, algorithm=algorithm)
     except TabularError as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify(
         {
             "task": result.task,
+            "algorithm": result.algorithm,
+            "algorithm_label": result.algorithm_label,
             "metrics": result.metrics,
             "feature_importance": result.feature_importance,
             "columns": result.evaluation_columns,

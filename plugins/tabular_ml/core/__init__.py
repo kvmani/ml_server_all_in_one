@@ -13,6 +13,12 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import (
+    GradientBoostingClassifier,
+    GradientBoostingRegressor,
+    RandomForestClassifier,
+    RandomForestRegressor,
+)
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import accuracy_score, mean_squared_error
 from sklearn.model_selection import train_test_split
@@ -26,6 +32,8 @@ class TabularError(ValueError):
 @dataclass
 class TrainingResult:
     task: str
+    algorithm: str
+    algorithm_label: str
     metrics: Dict[str, float]
     feature_importance: Dict[str, float]
     evaluation: List[Dict[str, object]]
@@ -195,9 +203,46 @@ def _is_classification(y: pd.Series) -> bool:
     return y.nunique() <= max(10, int(len(y) * 0.05))
 
 
-def train_on_dataset(dataset_id: str, target: str) -> TrainingResult:
+def _resolve_algorithm(task: str, requested: str) -> Tuple[object, bool, str, str]:
+    """Select an estimator for the detected task."""
+
+    normalized = (requested or "auto").strip().lower()
+    if not normalized or normalized == "auto":
+        normalized = "linear_model"
+
+    if normalized == "linear_model":
+        if task == "classification":
+            model = LogisticRegression(max_iter=1000)
+            label = "Logistic regression"
+        else:
+            model = Ridge(alpha=1.0)
+            label = "Ridge regression"
+        return model, True, "linear_model", label
+
+    if normalized == "random_forest":
+        if task == "classification":
+            model = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
+            label = "Random forest classifier"
+        else:
+            model = RandomForestRegressor(n_estimators=300, random_state=42, n_jobs=-1)
+            label = "Random forest regressor"
+        return model, False, "random_forest", label
+
+    if normalized == "gradient_boosting":
+        if task == "classification":
+            model = GradientBoostingClassifier(random_state=42)
+            label = "Gradient boosting classifier"
+        else:
+            model = GradientBoostingRegressor(random_state=42)
+            label = "Gradient boosting regressor"
+        return model, False, "gradient_boosting", label
+
+    raise TabularError("Unsupported algorithm selected")
+
+
+def train_on_dataset(dataset_id: str, target: str, *, algorithm: str = "auto") -> TrainingResult:
     df = get_dataset(dataset_id)
-    result = train_model(df, target)
+    result = train_model(df, target, algorithm=algorithm)
     _LATEST_RESULTS[dataset_id] = result
     # Keep only a small number of cached results
     while len(_LATEST_RESULTS) > _STORE.max_items:
@@ -205,7 +250,7 @@ def train_on_dataset(dataset_id: str, target: str) -> TrainingResult:
     return result
 
 
-def train_model(df: pd.DataFrame, target: str) -> TrainingResult:
+def train_model(df: pd.DataFrame, target: str, *, algorithm: str = "auto") -> TrainingResult:
     X, y = _prepare(df, target)
     task = "classification" if _is_classification(y) else "regression"
 
@@ -231,25 +276,34 @@ def train_model(df: pd.DataFrame, target: str) -> TrainingResult:
     else:
         X_train, X_test, y_train, y_test = X, X, y, y
 
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    estimator, use_scaler, resolved_algorithm, algorithm_label = _resolve_algorithm(task, algorithm)
+
+    if use_scaler:
+        scaler = StandardScaler()
+        X_train_data = scaler.fit_transform(X_train)
+        X_test_data = scaler.transform(X_test)
+    else:
+        X_train_data = X_train.values
+        X_test_data = X_test.values
 
     evaluation: List[Dict[str, object]] = []
     evaluation_columns: List[str] = ["row_index", "actual", "predicted", "residual"]
 
     if task == "classification":
-        model = LogisticRegression(max_iter=1000)
-        model.fit(X_train_scaled, y_train)
-        preds = model.predict(X_test_scaled)
+        estimator.fit(X_train_data, y_train)
+        preds = estimator.predict(X_test_data)
         metrics = {"accuracy": float(accuracy_score(y_test, preds))}
-        importance_values = np.abs(model.coef_).mean(axis=0)
+        if hasattr(estimator, "coef_"):
+            coef = np.abs(np.asarray(estimator.coef_))
+            importance_values = coef.mean(axis=0) if coef.ndim > 1 else coef
+        else:
+            importance_values = getattr(estimator, "feature_importances_", np.zeros(len(X.columns)))
         proba_values: Optional[np.ndarray] = None
-        if hasattr(model, "predict_proba"):
-            proba_values = model.predict_proba(X_test_scaled)
+        if hasattr(estimator, "predict_proba"):
+            proba_values = estimator.predict_proba(X_test_data)
             if proba_values.size:
                 evaluation_columns.append("confidence")
-        classes: Optional[List[object]] = list(model.classes_) if proba_values is not None else None
+        classes: Optional[List[object]] = list(estimator.classes_) if proba_values is not None else None
         for position, (idx, predicted) in enumerate(zip(y_test.index, preds)):
             actual_value = y_test.iloc[position]
             row: Dict[str, object] = {
@@ -267,11 +321,14 @@ def train_model(df: pd.DataFrame, target: str) -> TrainingResult:
                     row["confidence"] = float(proba_values[position][class_index])
             evaluation.append(row)
     else:
-        model = Ridge(alpha=1.0)
-        model.fit(X_train_scaled, y_train)
-        preds = model.predict(X_test_scaled)
+        estimator.fit(X_train_data, y_train)
+        preds = estimator.predict(X_test_data)
         metrics = {"rmse": float(np.sqrt(mean_squared_error(y_test, preds)))}
-        importance_values = np.abs(model.coef_)
+        if hasattr(estimator, "coef_"):
+            coef = np.abs(np.asarray(estimator.coef_))
+            importance_values = coef
+        else:
+            importance_values = getattr(estimator, "feature_importances_", np.zeros(len(X.columns)))
         for idx, predicted, actual_value in zip(y_test.index, preds, y_test):
             predicted_value = float(predicted)
             actual_scalar = float(actual_value)
@@ -283,11 +340,18 @@ def train_model(df: pd.DataFrame, target: str) -> TrainingResult:
             }
             evaluation.append(row)
 
-    importance = dict(zip(X.columns, importance_values))
+    importance_array = np.asarray(importance_values)
+    if importance_array.ndim > 1:
+        importance_array = importance_array.flatten()
+    if importance_array.shape[0] != len(X.columns):
+        importance_array = np.resize(importance_array, len(X.columns))
+    importance = {column: float(importance_array[idx]) for idx, column in enumerate(X.columns)}
     # Sort by magnitude descending
     importance = dict(sorted(importance.items(), key=lambda item: item[1], reverse=True))
     return TrainingResult(
         task=task,
+        algorithm=resolved_algorithm,
+        algorithm_label=algorithm_label,
         metrics=metrics,
         feature_importance=importance,
         evaluation=evaluation,

@@ -116,6 +116,18 @@
                   <input id="target" name="target" placeholder="e.g. hardness" required>
                   <p class="form-field__hint">Matches the header name in the CSV file.</p>
                 </div>
+                <div class="form-field">
+                  <label class="form-field__label" for="algorithm">
+                    Algorithm
+                    <span class="form-field__hint">Choose an estimator style. Automatic picks a strong baseline for the detected task.</span>
+                  </label>
+                  <select id="algorithm" name="algorithm">
+                    <option value="auto">Automatic (recommended)</option>
+                    <option value="linear_model">Generalised linear model</option>
+                    <option value="random_forest">Random forest ensemble</option>
+                    <option value="gradient_boosting">Gradient boosting ensemble</option>
+                  </select>
+                </div>
                 <div class="form-actions">
                   <button class="btn" type="submit">Train model</button>
                   <button class="btn btn--ghost" type="reset" id="train-reset">Reset</button>
@@ -128,7 +140,10 @@
                     <p class="tool-card__category">Training results</p>
                     <h4 class="form-section__title">Performance summary</h4>
                   </div>
-                  <p id="task" class="badge"></p>
+                  <div class="tabular-results__badges">
+                    <p id="task" class="badge"></p>
+                    <p id="algorithm-used" class="badge badge--muted"></p>
+                  </div>
                 </header>
                 <div class="tabular-results__grid">
                   <div>

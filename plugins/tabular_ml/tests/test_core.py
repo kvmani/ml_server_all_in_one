@@ -1,6 +1,5 @@
-import io
-
 import pandas as pd
+import pytest
 
 from plugins.tabular_ml.core import (
     TabularError,
@@ -23,6 +22,8 @@ def test_load_dataset_and_train_classification():
     loaded = load_dataset(csv_bytes)
     result = train_model(loaded, "target")
     assert result.task == "classification"
+    assert result.algorithm == "linear_model"
+    assert "Logistic" in result.algorithm_label
     assert "accuracy" in result.metrics
     assert result.evaluation
     assert "residual" in result.evaluation_columns
@@ -46,6 +47,8 @@ def test_train_model_produces_residuals_for_regression():
     )
     result = train_model(df, "target")
     assert result.task == "regression"
+    assert result.algorithm == "linear_model"
+    assert "Ridge" in result.algorithm_label
     assert "rmse" in result.metrics
     assert result.evaluation
     assert any(abs(record["residual"]) > 0 for record in result.evaluation)
@@ -67,3 +70,29 @@ def test_train_model_requires_target():
         pass
     else:  # pragma: no cover - defensive
         raise AssertionError("Expected TabularError")
+
+
+def test_train_model_supports_random_forest_classifier():
+    df = pd.DataFrame(
+        {
+            "feat1": [0, 1, 0, 1, 0, 1, 0, 1],
+            "feat2": [1, 0, 1, 0, 1, 0, 1, 0],
+            "target": [0, 1, 0, 1, 0, 1, 0, 1],
+        }
+    )
+    result = train_model(df, "target", algorithm="random_forest")
+    assert result.task == "classification"
+    assert result.algorithm == "random_forest"
+    assert "Random forest" in result.algorithm_label
+    assert "accuracy" in result.metrics
+
+
+def test_train_model_rejects_unknown_algorithm():
+    df = pd.DataFrame(
+        {
+            "x": [1, 2, 3, 4],
+            "target": [2, 3, 4, 5],
+        }
+    )
+    with pytest.raises(TabularError):
+        train_model(df, "target", algorithm="unsupported")

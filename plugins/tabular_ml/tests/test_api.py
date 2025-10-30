@@ -34,9 +34,31 @@ def test_train_endpoint_success():
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["task"] == "classification"
+    assert payload["algorithm"] == "linear_model"
+    assert "Logistic" in payload["algorithm_label"]
     assert payload["columns"]
     assert payload["preview"]
     assert payload["rows"] >= 1
+
+
+def test_train_endpoint_accepts_algorithm_choice():
+    df = pd.DataFrame(
+        {
+            "feat1": [0, 1, 0, 1, 0, 1, 0, 1],
+            "feat2": [1, 0, 1, 0, 1, 0, 1, 0],
+            "target": [0, 1, 0, 1, 0, 1, 0, 1],
+        }
+    )
+    client = _make_client()
+    dataset_id = _upload_dataset(client, df)
+    response = client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/train",
+        json={"target": "target", "algorithm": "gradient_boosting"},
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["algorithm"] == "gradient_boosting"
+    assert "Gradient boosting" in payload["algorithm_label"]
 
 
 def test_scatter_endpoint():
@@ -65,6 +87,22 @@ def test_train_requires_target():
     response = client.post(
         f"/tabular_ml/api/v1/datasets/{dataset_id}/train",
         json={},
+    )
+    assert response.status_code == 400
+
+
+def test_train_endpoint_validates_algorithm_type():
+    df = pd.DataFrame({"a": [1, 2, 3], "b": [3, 4, 5], "target": [0, 1, 0]})
+    client = _make_client()
+    dataset_id = _upload_dataset(client, df)
+    response = client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/train",
+        json={"target": "target", "algorithm": 123},
+    )
+    assert response.status_code == 400
+    response = client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/train",
+        json={"target": "target", "algorithm": "unknown"},
     )
     assert response.status_code == 400
 

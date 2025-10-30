@@ -129,6 +129,17 @@
   gap: 0.75rem;
 }
 
+.tabular-results__badges {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tabular-results__badges .badge {
+  white-space: nowrap;
+}
+
 .tabular-results__grid {
   display: grid;
   gap: 1.5rem;
