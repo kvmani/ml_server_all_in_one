@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from flask import Blueprint, Response, current_app, jsonify, render_template, request, send_file
+from flask import Blueprint, Response, current_app, jsonify, render_template, request, send_file, url_for
 
 from app.security import validate_mime
 from common.validate import FileLimit, ValidationError, enforce_limits
@@ -32,7 +32,7 @@ bp = Blueprint(
     url_prefix="/tabular_ml",
     template_folder="../ui/templates",
     static_folder="../ui/static/tabular_ml",
-    static_url_path="/static/tabular_ml",
+    static_url_path="/static",
 )
 
 
@@ -55,7 +55,26 @@ def _upload_limits() -> FileLimit:
 @bp.get("/")
 def index() -> str:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("tabular_ml", {})
-    return render_template("tabular_ml/index.html", plugin_settings=settings)
+    renderer = current_app.extensions.get("render_react")
+    if not renderer:
+        return render_template("tabular_ml/index.html", plugin_settings=settings)
+
+    theme_state = current_app.extensions.get("theme_state")
+    apply_theme = current_app.extensions.get("theme_url")
+    _, _, current_theme = theme_state() if callable(theme_state) else ({}, "midnight", "midnight")
+    theme_apply = apply_theme if callable(apply_theme) else (lambda value, _theme: value)
+
+    docs_url = settings.get("docs")
+    if docs_url:
+        help_href = theme_apply(docs_url, current_theme)
+    else:
+        help_href = theme_apply(url_for("help_page", slug="tabular_ml"), current_theme)
+
+    props = {
+        "helpHref": help_href,
+        "upload": settings.get("upload", {}),
+    }
+    return renderer("tabular_ml", props)
 
 
 @bp.post("/api/v1/datasets")

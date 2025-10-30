@@ -48,7 +48,18 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
    pip install -r requirements.txt
    ```
 
-3. **Review configuration** (optional)
+3. **Build the frontend bundle**
+
+   ```bash
+   cd frontend
+   npm install
+   npm run build
+   cd ..
+   ```
+
+   The Vite build places hashed React assets under `app/ui/static/react/`. Re-run the build whenever you change files in `frontend/`.
+
+4. **Review configuration** (optional)
 
    - Open [`config.yml`](config.yml) to adjust:
      - `site.name`, `site.description`, and `site.default_theme`
@@ -57,7 +68,7 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
      - Per-plugin limits (e.g., `plugins.pdf_tools.merge_upload.max_mb`)
      - Documentation links (`plugins.<tool>.docs`)
 
-4. **Run the development server**
+5. **Run the development server**
 
    ```bash
     export FLASK_APP=app:create_app
@@ -66,7 +77,7 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
 
    Visit `http://localhost:5000/?theme=<theme-key>` to preview the UI. Use the header toggle to switch between light and dark palettes—URLs update with the active theme for easy sharing.
 
-5. **Execute tests**
+6. **Execute tests**
 
    ```bash
    pytest -q
@@ -156,8 +167,8 @@ Refer to [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) for plugin scaffol
 
 ## Development notes
 
-- Reuse `setupDropzone`, `bindForm`, and `downloadBlob` from `app/ui/static/js/core.js` for consistent behaviours across tools.
-- Report user-facing progress through the shared activity window via `logMessage` (exposed from `app/ui/static/js/core.js`).
-- Parse numeric/boolean form values with `common.forms.get_float`, `get_int`, and `get_bool` to keep validation consistent across plugins.
-- New UI components should consume CSS variables defined in `core.css`; extend with additional custom properties when introducing new themes.
+- The React single-page shell lives under [`frontend/`](frontend/) and is built with Vite. Use `npm run dev` for a hot-reloading preview and `npm run build` before running Flask tests so hashed assets are up to date.
+- Each plugin UI is represented by a page component in [`frontend/src/pages/`](frontend/src/pages/). Export a default component and register it in [`frontend/src/App.tsx`](frontend/src/App.tsx) with a route key matching the blueprint name.
+- Flask routes render the React bundle through `_render_react_page` in [`app/__init__.py`](app/__init__.py). Pass initial props from the route handler when server-side context is required.
+- Shared styling tokens continue to live in [`app/ui/static/css/core.css`](app/ui/static/css/core.css); React components import supporting styles from [`frontend/src/styles/`](frontend/src/styles/).
 - Keep binary assets (screenshots, datasets, etc.) outside version control. Generate previews in the sandbox when preparing reports or PRs.

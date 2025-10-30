@@ -4,7 +4,7 @@ import base64
 import json
 from io import BytesIO
 
-from flask import Blueprint, Response, current_app, jsonify, render_template, request, send_file
+from flask import Blueprint, Response, current_app, jsonify, render_template, request, send_file, url_for
 
 from app.security import secure_filename, validate_mime
 from common.validate import FileLimit, ValidationError, enforce_limits
@@ -17,13 +17,33 @@ bp = Blueprint(
     url_prefix="/pdf_tools",
     template_folder="../ui/templates",
     static_folder="../ui/static/pdf_tools",
-    static_url_path="/static/pdf_tools",
+    static_url_path="/static",
 )
 
 @bp.get("/")
 def index() -> str:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("pdf_tools", {})
-    return render_template("pdf_tools/index.html", plugin_settings=settings)
+    renderer = current_app.extensions.get("render_react")
+    if not renderer:
+        return render_template("pdf_tools/index.html", plugin_settings=settings)
+
+    theme_state = current_app.extensions.get("theme_state")
+    apply_theme = current_app.extensions.get("theme_url")
+    _, _, current_theme = theme_state() if callable(theme_state) else ({}, "midnight", "midnight")
+    theme_apply = apply_theme if callable(apply_theme) else (lambda value, _theme: value)
+
+    docs_url = settings.get("docs")
+    if docs_url:
+        help_href = theme_apply(docs_url, current_theme)
+    else:
+        help_href = theme_apply(url_for("help_page", slug="pdf_tools"), current_theme)
+
+    props = {
+        "helpHref": help_href,
+        "mergeUpload": settings.get("merge_upload", {}),
+        "splitUpload": settings.get("split_upload", {}),
+    }
+    return renderer("pdf_tools", props)
 
 
 def _merge_limit() -> FileLimit:
