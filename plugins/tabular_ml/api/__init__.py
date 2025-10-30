@@ -8,13 +8,18 @@ from app.security import validate_mime
 from common.validate import FileLimit, ValidationError, enforce_limits
 
 from ..core import (
+    BatchPredictionResult,
     DatasetProfile,
+    ModelNotReadyError,
     TabularError,
     build_profile,
     drop_dataset,
+    export_batch_predictions_csv,
     export_predictions_csv,
     get_dataset,
     latest_result,
+    predict_batch,
+    predict_single,
     register_dataset,
     scatter_points,
     train_on_dataset,
@@ -116,7 +121,66 @@ def train(dataset_id: str) -> Response:
             "columns": result.evaluation_columns,
             "preview": result.evaluation[:5],
             "rows": len(result.evaluation),
+            "feature_columns": result.feature_columns,
+            "target": result.target_column,
         }
+    )
+
+
+@bp.post("/api/v1/datasets/<dataset_id>/predict")
+def predict(dataset_id: str) -> Response:
+    payload = request.get_json(silent=True) or {}
+    features = payload.get("features")
+    if not isinstance(features, dict):
+        return jsonify({"error": "Features must be provided as an object"}), 400
+    try:
+        result = predict_single(dataset_id, features)
+    except ModelNotReadyError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except TabularError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(result)
+
+
+@bp.post("/api/v1/datasets/<dataset_id>/predict/batch")
+def predict_batch_endpoint(dataset_id: str) -> Response:
+    file = request.files.get("dataset")
+    if not file:
+        return jsonify({"error": "Batch CSV file is required"}), 400
+    try:
+        enforce_limits([file], _upload_limits())
+        validate_mime([file], {"text/csv", "application/vnd.ms-excel"})
+    except (ValidationError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    try:
+        batch_result = predict_batch(dataset_id, file.read())
+    except ModelNotReadyError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except TabularError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(_batch_payload(batch_result))
+
+
+@bp.get("/api/v1/datasets/<dataset_id>/predict/batch")
+def download_batch_predictions(dataset_id: str) -> Response:
+    fmt = (request.args.get("format") or "csv").lower()
+    if fmt != "csv":
+        return jsonify({"error": "Only CSV export is supported"}), 400
+    try:
+        csv_bytes = export_batch_predictions_csv(dataset_id)
+    except ModelNotReadyError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except TabularError as exc:
+        return jsonify({"error": str(exc)}), 400
+    buffer = BytesIO(csv_bytes)
+    buffer.seek(0)
+    filename = f"{dataset_id[:8]}_batch_predictions.csv"
+    return send_file(
+        buffer,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name=filename,
+        max_age=0,
     )
 
 
@@ -161,4 +225,12 @@ def _profile_payload(profile: DatasetProfile) -> dict:
         "shape": profile.shape,
         "stats": profile.stats,
         "numeric_columns": profile.numeric_columns,
+    }
+
+
+def _batch_payload(result: BatchPredictionResult) -> dict:
+    return {
+        "columns": result.columns,
+        "preview": result.preview,
+        "rows": result.row_count,
     }

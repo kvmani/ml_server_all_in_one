@@ -222,6 +222,76 @@
   color: var(--color-muted);
 }
 
+.tabular-inference {
+  display: grid;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tabular-inference__output {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  background: rgba(17, 28, 51, 0.35);
+}
+
+.tabular-inference__value {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.tabular-inference__probabilities {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.35rem 0.75rem;
+  margin: 0.75rem 0 0;
+}
+
+.tabular-inference__probabilities dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+}
+
+.tabular-inference__probabilities dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.tabular-inference__batch {
+  display: grid;
+  gap: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tabular-inference__heading {
+  margin: 0;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.tabular-inference__batch-results {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  background: rgba(17, 28, 51, 0.3);
+}
+
+.tabular-inference__batch-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 720px) {
   .tabular-overview__header {
     flex-direction: column;
