@@ -7,6 +7,174 @@
   </head>
   <body>
     <div id="root"></div>
+    <script id="app-state" type="application/json">{}</script>
+    <script>
+      (() => {
+        const baseState = {
+          page: "home",
+          currentTheme: "daylight",
+          defaultTheme: "daylight",
+          themeOptions: {
+            daylight: { label: "Daylight" },
+            darkroom: { label: "Darkroom" },
+          },
+          siteSettings: {
+            name: "ML Server All-In-One",
+            description: "Offline only · Privacy first · Built for labs",
+            help_overview: "/help/overview",
+          },
+          manifests: [
+            {
+              blueprint: "pdf_tools",
+              title: "PDF toolkit workspace",
+              summary: "Merge, split, and reorder PDFs entirely in-memory.",
+              category: "Document Utilities",
+              tags: ["pdf", "merge", "split"],
+              docs: "/help/pdf_tools",
+            },
+            {
+              blueprint: "unit_converter",
+              title: "Scientific unit converter",
+              summary: "Convert laboratory measurements with precision controls.",
+              category: "General Utilities",
+              tags: ["units", "physics", "lab"],
+              docs: "/help/unit_converter",
+            },
+            {
+              blueprint: "hydride_segmentation",
+              title: "Hydride segmentation workstation",
+              summary: "Analyse zirconium microscopy images with tunable pipelines.",
+              category: "Microstructural Analysis",
+              tags: ["microscopy", "segmentation"],
+              docs: "/help/hydride_segmentation",
+            },
+            {
+              blueprint: "tabular_ml",
+              title: "Tabular ML studio",
+              summary: "Profile datasets, train models, and export predictions.",
+              category: "Machine Learning",
+              tags: ["ml", "csv", "analysis"],
+              docs: "/help/tabular_ml",
+            },
+          ],
+          props: {},
+        };
+
+        const routeStates = {
+          "/": { page: "home", props: {} },
+          "": { page: "home", props: {} },
+          "/pdf_tools": {
+            page: "pdf_tools",
+            props: {
+              helpHref: "/help/pdf_tools",
+              mergeUpload: { max_files: 6, max_mb: 12 },
+              splitUpload: { max_mb: 8 },
+            },
+          },
+          "/pdf_tools/": {
+            page: "pdf_tools",
+            props: {
+              helpHref: "/help/pdf_tools",
+              mergeUpload: { max_files: 6, max_mb: 12 },
+              splitUpload: { max_mb: 8 },
+            },
+          },
+          "/unit_converter": {
+            page: "unit_converter",
+            props: {
+              helpHref: "/help/unit_converter",
+              families: ["temperature", "pressure", "length"],
+              units: {
+                temperature: [
+                  { symbol: "degC", aliases: ["c", "celsius"], dimension: "temperature" },
+                  { symbol: "K", aliases: ["kelvin"], dimension: "temperature" },
+                  { symbol: "degF", aliases: ["fahrenheit"], dimension: "temperature" },
+                ],
+                pressure: [
+                  { symbol: "Pa", aliases: ["pascal"], dimension: "pressure" },
+                  { symbol: "bar", dimension: "pressure" },
+                  { symbol: "psi", aliases: ["pound force"], dimension: "pressure" },
+                ],
+                length: [
+                  { symbol: "m", aliases: ["meter"], dimension: "length" },
+                  { symbol: "cm", dimension: "length" },
+                  { symbol: "mm", dimension: "length" },
+                ],
+              },
+            },
+          },
+          "/unit_converter/": {
+            page: "unit_converter",
+            props: {
+              helpHref: "/help/unit_converter",
+              families: ["temperature", "pressure", "length"],
+              units: {
+                temperature: [
+                  { symbol: "degC", aliases: ["c", "celsius"], dimension: "temperature" },
+                  { symbol: "K", aliases: ["kelvin"], dimension: "temperature" },
+                  { symbol: "degF", aliases: ["fahrenheit"], dimension: "temperature" },
+                ],
+                pressure: [
+                  { symbol: "Pa", aliases: ["pascal"], dimension: "pressure" },
+                  { symbol: "bar", dimension: "pressure" },
+                  { symbol: "psi", aliases: ["pound force"], dimension: "pressure" },
+                ],
+                length: [
+                  { symbol: "m", aliases: ["meter"], dimension: "length" },
+                  { symbol: "cm", dimension: "length" },
+                  { symbol: "mm", dimension: "length" },
+                ],
+              },
+            },
+          },
+          "/hydride_segmentation": {
+            page: "hydride_segmentation",
+            props: {
+              helpHref: "/help/hydride_segmentation",
+              maxMb: 6,
+            },
+          },
+          "/hydride_segmentation/": {
+            page: "hydride_segmentation",
+            props: {
+              helpHref: "/help/hydride_segmentation",
+              maxMb: 6,
+            },
+          },
+          "/tabular_ml": {
+            page: "tabular_ml",
+            props: {
+              helpHref: "/help/tabular_ml",
+              upload: { max_mb: 3 },
+            },
+          },
+          "/tabular_ml/": {
+            page: "tabular_ml",
+            props: {
+              helpHref: "/help/tabular_ml",
+              upload: { max_mb: 3 },
+            },
+          },
+        };
+
+        const rawPath = window.location.pathname;
+        const basePath = "/static/react";
+        const relative = rawPath.startsWith(basePath) ? rawPath.slice(basePath.length) || "/" : rawPath;
+        const normalised = relative.endsWith("/") && relative !== "/" ? relative.slice(0, -1) : relative;
+        const entry = routeStates[relative] || routeStates[normalised] || routeStates["/"];
+        const state = {
+          ...baseState,
+          page: entry.page,
+          props: entry.props || {},
+        };
+
+        document.documentElement.dataset.theme = state.currentTheme;
+        const script = document.getElementById("app-state");
+        if (script) {
+          script.textContent = JSON.stringify(state);
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
