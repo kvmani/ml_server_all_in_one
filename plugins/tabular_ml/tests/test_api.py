@@ -39,6 +39,8 @@ def test_train_endpoint_success():
     assert payload["columns"]
     assert payload["preview"]
     assert payload["rows"] >= 1
+    assert payload["feature_columns"] == ["feat1", "feat2"]
+    assert payload["target"] == "target"
 
 
 def test_train_endpoint_accepts_algorithm_choice():
@@ -132,6 +134,75 @@ def test_predictions_export_csv_and_json():
     data = json_response.get_json()
     assert data["columns"]
     assert data["rows"]
+
+
+def test_predict_endpoint_single():
+    df = pd.DataFrame(
+        {
+            "feat1": [0, 1, 0, 1, 0, 1, 0, 1],
+            "feat2": [1, 0, 1, 0, 1, 0, 1, 0],
+            "target": [0, 1, 0, 1, 0, 1, 0, 1],
+        }
+    )
+    client = _make_client()
+    dataset_id = _upload_dataset(client, df)
+    client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/train",
+        json={"target": "target"},
+    )
+    response = client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/predict",
+        json={"features": {"feat1": 0.4, "feat2": 0.6}},
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["target"] == "target"
+    assert payload["feature_columns"] == ["feat1", "feat2"]
+    assert "prediction" in payload
+    assert "confidence" in payload
+
+
+def test_predict_endpoint_requires_training():
+    df = pd.DataFrame({"feat1": [1, 2, 3], "target": [0, 1, 0]})
+    client = _make_client()
+    dataset_id = _upload_dataset(client, df)
+    response = client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/predict",
+        json={"features": {"feat1": 1}},
+    )
+    assert response.status_code == 404
+
+
+def test_predict_batch_endpoint_and_download():
+    df = pd.DataFrame(
+        {
+            "feat1": [1, 2, 3, 4],
+            "feat2": [2, 3, 4, 5],
+            "target": [1, 2, 1, 2],
+        }
+    )
+    client = _make_client()
+    dataset_id = _upload_dataset(client, df)
+    client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/train",
+        json={"target": "target"},
+    )
+    batch_data = df.drop(columns=["target"]).to_csv(index=False).encode()
+    response = client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/predict/batch",
+        data={"dataset": (io.BytesIO(batch_data), "batch.csv")},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["columns"]
+    assert payload["preview"]
+    assert payload["rows"] == len(df)
+
+    download = client.get(f"/tabular_ml/api/v1/datasets/{dataset_id}/predict/batch?format=csv")
+    assert download.status_code == 200
+    assert download.mimetype == "text/csv"
+    assert "attachment" in download.headers.get("Content-Disposition", "")
 
 
 def test_predictions_require_training_first():

@@ -9,7 +9,7 @@ import csv
 import math
 import threading
 import uuid
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -29,6 +29,10 @@ class TabularError(ValueError):
     """Raised when the dataset or parameters are invalid."""
 
 
+class ModelNotReadyError(TabularError):
+    """Raised when inference is requested before a model has been trained."""
+
+
 @dataclass
 class TrainingResult:
     task: str
@@ -38,6 +42,18 @@ class TrainingResult:
     feature_importance: Dict[str, float]
     evaluation: List[Dict[str, object]]
     evaluation_columns: List[str]
+    estimator: Any
+    scaler: Optional[StandardScaler]
+    feature_columns: List[str]
+    target_column: str
+
+
+@dataclass
+class BatchPredictionResult:
+    columns: List[str]
+    preview: List[Dict[str, object]]
+    row_count: int
+    csv_bytes: bytes
 
 
 @dataclass
@@ -83,6 +99,7 @@ class DatasetStore:
 
 _STORE = DatasetStore()
 _LATEST_RESULTS: "OrderedDict[str, TrainingResult]" = OrderedDict()
+_BATCH_PREDICTIONS: "OrderedDict[str, BatchPredictionResult]" = OrderedDict()
 
 
 def _row_identifier(index: object) -> object:
@@ -153,6 +170,7 @@ def get_dataset(dataset_id: str) -> pd.DataFrame:
 def drop_dataset(dataset_id: str) -> None:
     _STORE.remove(dataset_id)
     _LATEST_RESULTS.pop(dataset_id, None)
+    _BATCH_PREDICTIONS.pop(dataset_id, None)
 
 
 def scatter_points(dataset_id: str, x: str, y: str, color: Optional[str] = None, *, max_points: int = 400) -> Dict[str, object]:
@@ -278,6 +296,7 @@ def train_model(df: pd.DataFrame, target: str, *, algorithm: str = "auto") -> Tr
 
     estimator, use_scaler, resolved_algorithm, algorithm_label = _resolve_algorithm(task, algorithm)
 
+    scaler: Optional[StandardScaler] = None
     if use_scaler:
         scaler = StandardScaler()
         X_train_data = scaler.fit_transform(X_train)
@@ -356,6 +375,10 @@ def train_model(df: pd.DataFrame, target: str, *, algorithm: str = "auto") -> Tr
         feature_importance=importance,
         evaluation=evaluation,
         evaluation_columns=evaluation_columns,
+        estimator=estimator,
+        scaler=scaler,
+        feature_columns=list(X.columns),
+        target_column=target,
     )
 
 
@@ -372,8 +395,147 @@ def export_predictions_csv(result: TrainingResult) -> bytes:
     return buffer.getvalue().encode("utf-8")
 
 
+def _normalise_feature_value(value: object, column: str) -> float:
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        numeric = float(value)
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            raise TabularError(f"Feature '{column}' is required for inference")
+        try:
+            numeric = float(stripped)
+        except ValueError as exc:  # pragma: no cover - defensive
+            raise TabularError(f"Feature '{column}' must be numeric") from exc
+    else:
+        raise TabularError(f"Feature '{column}' must be numeric")
+    if not math.isfinite(numeric):
+        raise TabularError(f"Feature '{column}' must be a finite number")
+    return numeric
+
+
+def _build_feature_matrix(result: TrainingResult, rows: Iterable[Mapping[str, object]]) -> np.ndarray:
+    if not result.feature_columns:
+        raise TabularError("Model does not expose numeric features for inference")
+    matrix: List[List[float]] = []
+    for row in rows:
+        values: List[float] = []
+        for column in result.feature_columns:
+            if column not in row:
+                raise TabularError(f"Missing feature '{column}' for inference")
+            values.append(_normalise_feature_value(row[column], column))
+        matrix.append(values)
+    feature_array = np.asarray(matrix, dtype=float)
+    if result.scaler is not None:
+        feature_array = result.scaler.transform(feature_array)
+    return feature_array
+
+
+def predict_single(dataset_id: str, features: Mapping[str, object]) -> Dict[str, object]:
+    result = latest_result(dataset_id)
+    if result is None:
+        raise ModelNotReadyError("Train a model before running inference")
+    feature_matrix = _build_feature_matrix(result, [features])
+    prediction = result.estimator.predict(feature_matrix)[0]
+    payload: Dict[str, object] = {
+        "task": result.task,
+        "target": result.target_column,
+        "feature_columns": result.feature_columns,
+        "prediction": _to_python(prediction),
+    }
+    if result.task == "classification" and hasattr(result.estimator, "predict_proba"):
+        proba = result.estimator.predict_proba(feature_matrix)
+        if proba.size:
+            classes = getattr(result.estimator, "classes_", None)
+            if classes is not None:
+                probabilities = {
+                    str(_to_python(cls)): float(prob)
+                    for cls, prob in zip(classes, proba[0])
+                }
+                payload["probabilities"] = probabilities
+                payload["confidence"] = float(max(probabilities.values()))
+    return payload
+
+
+def predict_batch(dataset_id: str, data: bytes) -> BatchPredictionResult:
+    result = latest_result(dataset_id)
+    if result is None:
+        raise ModelNotReadyError("Train a model before running inference")
+
+    frame = load_dataset(data)
+    if frame.empty:
+        raise TabularError("Batch CSV must contain at least one row")
+
+    missing = [column for column in result.feature_columns if column not in frame.columns]
+    if missing:
+        raise TabularError(
+            "Batch CSV is missing required feature columns: " + ", ".join(missing)
+        )
+
+    features = frame[result.feature_columns].copy()
+    for column in result.feature_columns:
+        features[column] = pd.to_numeric(features[column], errors="coerce")
+    if features.isna().any().any():
+        raise TabularError("Batch CSV contains non-numeric or missing feature values")
+
+    feature_matrix = features.to_numpy(dtype=float)
+    if result.scaler is not None:
+        feature_matrix = result.scaler.transform(feature_matrix)
+
+    predictions = result.estimator.predict(feature_matrix)
+    output = features.copy()
+    prediction_column = result.target_column or "prediction"
+    output[prediction_column] = [_to_python(value) for value in predictions]
+
+    if result.task == "classification" and hasattr(result.estimator, "predict_proba"):
+        proba = result.estimator.predict_proba(feature_matrix)
+        if proba.size:
+            confidence = np.max(proba, axis=1)
+            output["confidence"] = [float(value) for value in confidence]
+
+    preview_df = output.head(5).copy()
+    preview_records: List[Dict[str, object]] = []
+    for record in preview_df.to_dict(orient="records"):
+        clean_record: Dict[str, object] = {}
+        for key, value in record.items():
+            if isinstance(value, float) and not math.isfinite(value):
+                clean_record[key] = None
+            else:
+                clean_record[key] = _to_python(value)
+        preview_records.append(clean_record)
+
+    buffer = StringIO()
+    output.to_csv(buffer, index=False)
+    csv_bytes = buffer.getvalue().encode("utf-8")
+
+    batch_result = BatchPredictionResult(
+        columns=[str(column) for column in output.columns],
+        preview=preview_records,
+        row_count=int(len(output)),
+        csv_bytes=csv_bytes,
+    )
+
+    _BATCH_PREDICTIONS[dataset_id] = batch_result
+    while len(_BATCH_PREDICTIONS) > _STORE.max_items:
+        _BATCH_PREDICTIONS.popitem(last=False)
+
+    return batch_result
+
+
+def latest_batch_prediction(dataset_id: str) -> Optional[BatchPredictionResult]:
+    return _BATCH_PREDICTIONS.get(dataset_id)
+
+
+def export_batch_predictions_csv(dataset_id: str) -> bytes:
+    batch = latest_batch_prediction(dataset_id)
+    if batch is None:
+        raise ModelNotReadyError("Run batch predictions before downloading results")
+    return batch.csv_bytes
+
+
 __all__ = [
     "DatasetProfile",
+    "BatchPredictionResult",
+    "ModelNotReadyError",
     "TabularError",
     "TrainingResult",
     "build_profile",
@@ -382,8 +544,12 @@ __all__ = [
     "load_dataset",
     "register_dataset",
     "latest_result",
+    "latest_batch_prediction",
     "scatter_points",
     "export_predictions_csv",
+    "export_batch_predictions_csv",
+    "predict_batch",
+    "predict_single",
     "train_model",
     "train_on_dataset",
 ]

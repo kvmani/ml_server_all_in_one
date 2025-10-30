@@ -29,12 +29,32 @@ const importanceEl = document.getElementById("importance");
 const predictionTable = document.getElementById("prediction-table");
 const downloadPredictions = document.getElementById("download-predictions");
 const downloadJson = document.getElementById("download-json");
+const inferenceSection = document.getElementById("inference-section");
+const inferenceForm = document.getElementById("inference-form");
+const inferenceFields = document.getElementById("inference-fields");
+const inferenceEmpty = document.getElementById("inference-empty");
+const inferenceReset = document.getElementById("inference-reset");
+const inferenceOutput = document.getElementById("inference-output");
+const inferenceValue = document.getElementById("inference-value");
+const inferenceProbabilities = document.getElementById("inference-probabilities");
+const batchForm = document.getElementById("batch-form");
+const batchFile = document.getElementById("batch-file");
+const batchReset = document.getElementById("batch-reset");
+const batchResults = document.getElementById("batch-results");
+const batchSummary = document.getElementById("batch-summary");
+const batchTable = document.getElementById("batch-table");
+const batchDownload = document.getElementById("batch-download");
 
 let currentDatasetId = null;
 let currentColumns = [];
 let currentNumericColumns = [];
 let currentPredictionColumns = [];
+let currentFeatureColumns = [];
+let currentTargetColumn = "";
 let hasPredictions = false;
+let hasBatchPredictions = false;
+let inferenceController = null;
+let batchController = null;
 
 function titleCase(text) {
   if (!text) return "";
@@ -68,6 +88,7 @@ function setFormsEnabled(enabled) {
       algorithmBadge.textContent = "";
       algorithmBadge.hidden = true;
     }
+    resetInference();
   }
 }
 
@@ -78,6 +99,284 @@ function togglePredictionButtons(available) {
     button.disabled = !available;
   });
 }
+
+function resetInference() {
+  currentFeatureColumns = [];
+  currentTargetColumn = "";
+  hasBatchPredictions = false;
+  if (inferenceForm) {
+    inferenceForm.reset();
+  }
+  if (inferenceFields) {
+    inferenceFields.innerHTML = "";
+  }
+  if (inferenceEmpty) {
+    inferenceEmpty.hidden = true;
+  }
+  if (inferenceOutput) {
+    inferenceOutput.hidden = true;
+  }
+  if (inferenceValue) {
+    inferenceValue.textContent = "";
+  }
+  if (inferenceProbabilities) {
+    inferenceProbabilities.innerHTML = "";
+    inferenceProbabilities.hidden = true;
+  }
+  if (inferenceSection) {
+    inferenceSection.hidden = true;
+  }
+  if (inferenceController) {
+    inferenceController.setStatus("Train a model to enable inference", "info");
+  }
+  if (batchForm) {
+    batchForm.reset();
+  }
+  if (batchResults) {
+    batchResults.hidden = true;
+  }
+  if (batchTable) {
+    batchTable.innerHTML = "";
+  }
+  if (batchSummary) {
+    batchSummary.textContent = "";
+  }
+  if (batchDownload) {
+    batchDownload.disabled = true;
+  }
+  if (batchController) {
+    batchController.setStatus("Upload a CSV after training to run batch predictions", "info");
+  }
+}
+
+function renderInferenceFields(columns) {
+  if (!inferenceSection || !inferenceFields) {
+    return;
+  }
+  inferenceFields.innerHTML = "";
+  if (!columns?.length) {
+    inferenceSection.hidden = false;
+    if (inferenceEmpty) {
+      inferenceEmpty.hidden = false;
+    }
+    Array.from(inferenceForm?.elements || []).forEach((element) => {
+      if (element.type !== "reset") {
+        element.disabled = true;
+      }
+    });
+    if (inferenceController) {
+      inferenceController.setStatus("No numeric features available for inference", "warning");
+    }
+    return;
+  }
+  if (inferenceEmpty) {
+    inferenceEmpty.hidden = true;
+  }
+  columns.forEach((column) => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "form-field";
+    const label = document.createElement("label");
+    const fieldId = `inference-${column.replace(/[^a-z0-9_-]/gi, "-").toLowerCase()}`;
+    label.className = "form-field__label";
+    label.setAttribute("for", fieldId);
+    label.textContent = column;
+    const input = document.createElement("input");
+    input.id = fieldId;
+    input.name = column;
+    input.type = "number";
+    input.inputMode = "decimal";
+    input.step = "any";
+    input.required = true;
+    input.placeholder = "Enter value";
+    wrapper.appendChild(label);
+    wrapper.appendChild(input);
+    inferenceFields.appendChild(wrapper);
+  });
+  Array.from(inferenceForm?.elements || []).forEach((element) => {
+    if (element.type !== "reset") {
+      element.disabled = false;
+    }
+  });
+  inferenceSection.hidden = false;
+  if (inferenceController) {
+    inferenceController.setStatus("Provide feature values to run inference", "info");
+  }
+}
+
+function renderInferenceResult(data) {
+  if (!inferenceOutput || !inferenceValue) {
+    return;
+  }
+  const label = currentTargetColumn ? titleCase(currentTargetColumn.replace(/_/g, " ")) : "value";
+  let display = data.prediction;
+  if (typeof display === "number") {
+    display = Number.isFinite(display) ? display.toPrecision(5) : display;
+  }
+  let message = `Predicted ${label}: ${display}`;
+  if (typeof data.confidence === "number") {
+    message += ` (confidence ${(data.confidence * 100).toFixed(1)}%)`;
+  }
+  inferenceValue.textContent = message;
+  if (inferenceProbabilities) {
+    inferenceProbabilities.innerHTML = "";
+    const probabilities = data.probabilities || {};
+    const entries = Object.entries(probabilities).sort((a, b) => (b[1] || 0) - (a[1] || 0));
+    if (!entries.length) {
+      inferenceProbabilities.hidden = true;
+    } else {
+      entries.forEach(([target, value]) => {
+        const dt = document.createElement("dt");
+        dt.textContent = target;
+        const dd = document.createElement("dd");
+        const numeric = typeof value === "number" ? value : Number(value);
+        dd.textContent = Number.isFinite(numeric) ? `${(numeric * 100).toFixed(1)}%` : value;
+        inferenceProbabilities.appendChild(dt);
+        inferenceProbabilities.appendChild(dd);
+      });
+      inferenceProbabilities.hidden = false;
+    }
+  }
+  inferenceOutput.hidden = false;
+}
+
+function renderBatchPreview(columns, rows, totalRows) {
+  if (!batchTable) {
+    return;
+  }
+  batchTable.innerHTML = "";
+  if (!columns?.length || !rows?.length) {
+    batchTable.innerHTML = "<caption>No batch predictions available yet.</caption>";
+    if (batchSummary) {
+      batchSummary.textContent = "";
+    }
+    hasBatchPredictions = false;
+    if (batchDownload) {
+      batchDownload.disabled = true;
+    }
+    return;
+  }
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  columns.forEach((column) => {
+    const th = document.createElement("th");
+    th.textContent = column.replace(/_/g, " ");
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  const tbody = document.createElement("tbody");
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    columns.forEach((column) => {
+      const td = document.createElement("td");
+      let value = row[column];
+      if (typeof value === "number") {
+        value = Number.isFinite(value) ? value.toPrecision(5) : value;
+      }
+      td.textContent = value ?? "";
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  batchTable.appendChild(thead);
+  batchTable.appendChild(tbody);
+  if (batchSummary) {
+    const previewCount = rows.length;
+    batchSummary.textContent = `Showing ${Math.min(previewCount, totalRows)} of ${totalRows} rows`;
+  }
+  if (batchResults) {
+    batchResults.hidden = false;
+  }
+  if (batchDownload) {
+    batchDownload.disabled = false;
+  }
+  hasBatchPredictions = true;
+}
+
+async function fetchBatchCsv() {
+  if (!currentDatasetId || !hasBatchPredictions) {
+    throw new Error("Run batch predictions before downloading results");
+  }
+  const response = await fetch(
+    `/tabular_ml/api/v1/datasets/${currentDatasetId}/predict/batch?format=csv`,
+  );
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || "Unable to download batch predictions");
+  }
+  return response;
+}
+
+if (inferenceForm) {
+  inferenceController = bindForm(inferenceForm, {
+    pendingText: "Predicting…",
+    successText: "Prediction ready",
+    async onSubmit() {
+      if (!currentDatasetId) {
+        throw new Error("Load a dataset and train a model first");
+      }
+      if (!currentFeatureColumns.length) {
+        throw new Error("Train a model before running inference");
+      }
+      const features = {};
+      let missing = false;
+      currentFeatureColumns.forEach((column) => {
+        const field = inferenceForm.elements.namedItem(column);
+        const value = field ? field.value : "";
+        if (typeof value !== "string" || value.trim() === "") {
+          missing = true;
+        } else {
+          features[column] = value;
+        }
+      });
+      if (missing) {
+        throw new Error("Provide values for all feature columns");
+      }
+      const response = await fetch(`/tabular_ml/api/v1/datasets/${currentDatasetId}/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ features }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Prediction failed");
+      }
+      renderInferenceResult(data);
+    },
+  });
+}
+
+if (batchForm) {
+  batchController = bindForm(batchForm, {
+    pendingText: "Running batch inference…",
+    successText: "Batch predictions ready",
+    async onSubmit() {
+      if (!currentDatasetId) {
+        throw new Error("Load a dataset and train a model first");
+      }
+      if (!currentFeatureColumns.length) {
+        throw new Error("Train a model before running batch inference");
+      }
+      if (!batchFile?.files?.length) {
+        throw new Error("Select a CSV file to upload");
+      }
+      const formData = new FormData(batchForm);
+      const response = await fetch(
+        `/tabular_ml/api/v1/datasets/${currentDatasetId}/predict/batch`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Batch prediction failed");
+      }
+      renderBatchPreview(data.columns, data.preview, data.rows || data.preview?.length || 0);
+    },
+  });
+}
+
+resetInference();
 
 function renderPredictionPreview(columns, rows) {
   if (!predictionTable) return;
@@ -314,6 +613,7 @@ const datasetController = bindForm(datasetForm, {
     renderColumns(data.columns, data.stats);
     populateSelectors(data.columns, data.numeric_columns);
     datasetOverview.hidden = false;
+    resetInference();
     setFormsEnabled(true);
     datasetController.setStatus("Dataset ready", "success");
   },
@@ -470,6 +770,9 @@ const trainController = bindForm(trainForm, {
       algorithmBadge.textContent = data.algorithm_label || "";
       algorithmBadge.hidden = !data.algorithm_label;
     }
+    currentFeatureColumns = data.feature_columns || [];
+    currentTargetColumn = data.target || "";
+    renderInferenceFields(currentFeatureColumns);
     currentPredictionColumns = data.columns || [];
     renderPredictionPreview(currentPredictionColumns, data.preview || []);
   },
@@ -491,6 +794,7 @@ trainReset.addEventListener("click", () => {
     algorithmBadge.textContent = "";
     algorithmBadge.hidden = true;
   }
+  resetInference();
   trainController.setStatus("Ready", "info");
 });
 
@@ -527,6 +831,54 @@ if (downloadJson) {
       downloadBlob(blob, "predictions.json");
     } catch (error) {
       trainController.setStatus(error instanceof Error ? error.message : "Download failed", "error");
+    }
+  });
+}
+
+if (inferenceReset) {
+  inferenceReset.addEventListener("click", () => {
+    if (inferenceOutput) {
+      inferenceOutput.hidden = true;
+    }
+    if (inferenceValue) {
+      inferenceValue.textContent = "";
+    }
+    if (inferenceProbabilities) {
+      inferenceProbabilities.innerHTML = "";
+      inferenceProbabilities.hidden = true;
+    }
+    inferenceController?.setStatus("Provide feature values to run inference", "info");
+  });
+}
+
+if (batchReset) {
+  batchReset.addEventListener("click", () => {
+    if (batchResults) {
+      batchResults.hidden = true;
+    }
+    if (batchTable) {
+      batchTable.innerHTML = "";
+    }
+    if (batchSummary) {
+      batchSummary.textContent = "";
+    }
+    if (batchDownload) {
+      batchDownload.disabled = true;
+    }
+    hasBatchPredictions = false;
+    batchController?.setStatus("Upload a CSV after training to run batch predictions", "info");
+  });
+}
+
+if (batchDownload) {
+  batchDownload.addEventListener("click", async () => {
+    try {
+      const response = await fetchBatchCsv();
+      const blob = await response.blob();
+      downloadBlob(blob, "batch_predictions.csv");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Download failed";
+      (batchController || inferenceController)?.setStatus(message, "error");
     }
   });
 }

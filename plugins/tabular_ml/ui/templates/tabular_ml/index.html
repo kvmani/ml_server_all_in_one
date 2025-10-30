@@ -164,6 +164,53 @@
                       <button class="btn btn--ghost" type="button" id="download-json">Download JSON</button>
                     </div>
                   </div>
+                  <div>
+                    <h5 class="form-section__title">Run inference</h5>
+                    <p class="form-field__hint">Use the trained model to predict new rows.</p>
+                    <section id="inference-section" class="tabular-inference" hidden>
+                      <form id="inference-form" class="form-grid" novalidate>
+                        <div id="inference-fields" class="input-grid"></div>
+                        <p id="inference-empty" class="form-field__hint" hidden>
+                          This model requires numeric feature columns. No compatible features were detected.
+                        </p>
+                        <div class="form-actions">
+                          <button class="btn" type="submit">Predict</button>
+                          <button class="btn btn--ghost" type="reset" id="inference-reset">Reset</button>
+                        </div>
+                        <p class="status-text" data-role="status" aria-live="polite"></p>
+                      </form>
+                      <div id="inference-output" class="tabular-inference__output" hidden aria-live="polite" role="status">
+                        <p id="inference-value" class="tabular-inference__value"></p>
+                        <dl id="inference-probabilities" class="tabular-inference__probabilities"></dl>
+                      </div>
+                      <section class="tabular-inference__batch">
+                        <h6 class="tabular-inference__heading">Batch predictions</h6>
+                        <p class="form-field__hint">Upload a CSV with the same feature columns. Omit the target column.</p>
+                        <form id="batch-form" class="form-grid" enctype="multipart/form-data" novalidate>
+                          <div class="form-field">
+                            <label class="form-field__label" for="batch-file">Batch CSV</label>
+                            <input id="batch-file" name="dataset" type="file" accept="text/csv,application/vnd.ms-excel" required>
+                          </div>
+                          <div class="form-actions">
+                            <button class="btn" type="submit">Run batch predictions</button>
+                            <button class="btn btn--ghost" type="reset" id="batch-reset">Reset</button>
+                          </div>
+                          <p class="status-text" data-role="status" aria-live="polite"></p>
+                        </form>
+                        <section id="batch-results" class="tabular-inference__batch-results" hidden aria-live="polite">
+                          <header class="tabular-inference__batch-header">
+                            <p id="batch-summary" class="form-field__hint"></p>
+                            <div class="tabular-results__actions">
+                              <button class="btn btn--subtle" type="button" id="batch-download">Download CSV</button>
+                            </div>
+                          </header>
+                          <div class="prediction-preview" role="region">
+                            <table id="batch-table" class="tabular-predictions"></table>
+                          </div>
+                        </section>
+                      </section>
+                    </section>
+                  </div>
                 </div>
               </section>
             </div>
