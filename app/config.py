@@ -16,7 +16,13 @@ class BaseConfig:
     RESPONSE_HEADERS = {
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
-        "Content-Security-Policy": "default-src 'self'; img-src 'self' blob:; object-src 'none'; frame-ancestors 'none'",
+        "Content-Security-Policy": (
+            "default-src 'self'; "
+            "img-src 'self' data: blob:; "
+            "frame-src 'self' blob:; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'"
+        ),
         "Referrer-Policy": "no-referrer",
     }
 
