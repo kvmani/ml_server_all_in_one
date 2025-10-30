@@ -83,6 +83,17 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
    pytest -q
    ```
 
+7. **Run Playwright end-to-end suite**
+
+   ```bash
+   cd frontend
+   npx playwright install --with-deps  # first run only
+   npm run test:e2e
+   cd ..
+   ```
+
+   The Playwright runner spins up the Vite dev server automatically, exercises every plugin workflow in Chromium, Firefox, and Safari engines, and stores HTML reports, traces, and videos under `frontend/playwright-report/` and `frontend/test-results/`.
+
 ## Running in different environments
 
 ### Air-gapped workstations
@@ -164,6 +175,10 @@ Refer to [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) for plugin scaffol
 - `plugins/<tool>/` – tool-specific API routes, core logic, UI assets, and tests.
 - `docs/` – developer onboarding, tool deep dives, and configuration references.
 - `config.yml` – editable YAML controlling appearance and limits.
+
+## Continuous integration
+
+- **Playwright E2E** – GitHub Actions workflow triggered on every push and pull request. It caches Node dependencies, installs Playwright browsers, runs `npm run test:e2e`, and uploads the HTML report plus raw artifacts so reviewers can inspect traces and console output straight from the PR.
 
 ## Development notes
 

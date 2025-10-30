@@ -4,3 +4,5 @@ __pycache__/
 *.DS_Store
 frontend/node_modules/
 app/ui/static/react/
+frontend/playwright-report/
+frontend/test-results/
