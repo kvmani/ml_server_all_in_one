@@ -57,6 +57,7 @@
         'Machine Learning': 'In-browser model training pipelines optimised for tabular datasets.',
         'General Utilities': 'Everyday laboratory helpers with instant validation and clarity.'
       } %}
+      {% set icon_hues = [210, 330, 155, 32, 265, 15, 190] %}
       {% for group in plugins|groupby('category') %}
         {% set category = group.grouper or 'Tools' %}
         <section class="surface-block" aria-label="{{ category }}">
@@ -69,8 +70,9 @@
             {% for plugin in group.list %}
               {% set icon_url = plugin.icon and url_for(plugin.blueprint ~ '.static', filename=plugin.icon) %}
               {% set tags = (plugin.tags if plugin.tags is defined else []) or [] %}
+              {% set hue = icon_hues[loop.index0 % icon_hues|length] %}
               <article class="tool-card" role="listitem" data-tool-card data-tool-title="{{ plugin.title }}" data-tool-category="{{ plugin.category or 'Toolkit' }}" data-tool-summary="{{ plugin.summary }}" data-tool-tags="{{ tags|join(' ') }}" data-tool-launch="{{ url_for(plugin.blueprint ~ '.index', theme=current_theme) }}" {% if plugin.docs %}data-tool-docs="{{ plugin.docs }}{% if '?' in plugin.docs %}&{% else %}?{% endif %}theme={{ current_theme }}"{% endif %}>
-                <div class="tool-card__icon" aria-hidden="true">
+                <div class="tool-card__icon" aria-hidden="true" style="--icon-hue: {{ hue }};">
                   {% if icon_url %}
                     <img src="{{ icon_url }}" alt="" loading="lazy">
                   {% else %}

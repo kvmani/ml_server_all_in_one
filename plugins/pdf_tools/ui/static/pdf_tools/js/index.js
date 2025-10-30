@@ -59,11 +59,44 @@ function parseDisposition(header) {
   return match ? match[1] : null;
 }
 
-function ensurePreview(entry, url) {
+function pdfViewerUrl(url, params = {}) {
+  const entries = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => `${key}=${value}`);
+  if (!entries.length) {
+    return url;
+  }
+  return `${url}#${entries.join("&")}`;
+}
+
+function renderThumbnail(entry, url, filename) {
+  const frame = entry.querySelector(".merge-entry__thumbnail iframe");
+  if (!frame) {
+    return;
+  }
+  frame.src = pdfViewerUrl(url, {
+    page: 1,
+    view: "FitH",
+    toolbar: 0,
+    navpanes: 0,
+    statusbar: 0,
+  });
+  frame.title = `First page preview of ${filename}`;
+}
+
+function ensurePreview(entry, url, filename) {
   const preview = entry.querySelector(".merge-entry__preview");
+  if (!preview) {
+    return false;
+  }
   const frame = preview.querySelector("iframe");
-  if (!frame.src) {
-    frame.src = url;
+  if (!frame) {
+    return false;
+  }
+  if (!frame.dataset.loaded) {
+    frame.src = pdfViewerUrl(url, { page: 1, view: "FitH" });
+    frame.title = `Detailed preview of ${filename}`;
+    frame.dataset.loaded = "true";
   }
   const hidden = preview.hasAttribute("hidden");
   if (hidden) {
@@ -71,6 +104,7 @@ function ensurePreview(entry, url) {
   } else {
     preview.setAttribute("hidden", "");
   }
+  return hidden;
 }
 
 function renderMetadata(details, metadata, file) {
@@ -148,25 +182,33 @@ function addEntry(file) {
         <span class="merge-entry__meta">${humanSize(file.size)}</span>
       </div>
       <div class="merge-entry__actions">
-        <button type="button" data-action="preview">Preview</button>
+        <button type="button" data-action="preview" aria-pressed="false">Preview</button>
         <button type="button" data-action="up" aria-label="Move up">↑</button>
         <button type="button" data-action="down" aria-label="Move down">↓</button>
         <button type="button" data-action="remove" aria-label="Remove">Remove</button>
       </div>
     </div>
-    <div class="merge-entry__details" data-state="loading" aria-live="polite">
-      <p class="merge-entry__details-text">Reading PDF metadata…</p>
-    </div>
-    <label>Page range <span class="form-field__hint">Use “all” or ranges like 1-3,5</span>
-      <input type="text" name="range" value="all" placeholder="e.g. 1-3,5">
-    </label>
-    <div class="merge-entry__preview" hidden>
-      <iframe title="Preview of ${file.name}"></iframe>
+    <div class="merge-entry__layout">
+      <div class="merge-entry__thumbnail" aria-hidden="true">
+        <iframe loading="lazy"></iframe>
+      </div>
+      <div class="merge-entry__content">
+        <div class="merge-entry__details" data-state="loading" aria-live="polite">
+          <p class="merge-entry__details-text">Reading PDF metadata…</p>
+        </div>
+        <label>Page range <span class="form-field__hint">Use “all” or ranges like 1-3,5</span>
+          <input type="text" name="range" value="all" placeholder="e.g. 1-3,5">
+        </label>
+        <div class="merge-entry__preview" hidden>
+          <iframe loading="lazy"></iframe>
+        </div>
+      </div>
     </div>
   `;
 
   mergeEntries.appendChild(entry);
   entryMap.set(id, { file, url, element: entry, metadata: undefined });
+  renderThumbnail(entry, url, file.name);
   mergeDropzone?.classList.add("has-file");
   requestMetadata(id);
 }
@@ -262,7 +304,9 @@ mergeEntries.addEventListener("click", (event) => {
       mergeDropzone?.classList.remove("has-file");
     }
   } else if (action === "preview") {
-    ensurePreview(entry, item.url);
+    const isVisible = ensurePreview(entry, item.url, item.file.name);
+    button.textContent = isVisible ? "Hide preview" : "Preview";
+    button.setAttribute("aria-pressed", String(isVisible));
   } else if (action === "up" && entry.previousElementSibling) {
     mergeEntries.insertBefore(entry, entry.previousElementSibling);
   } else if (action === "down" && entry.nextElementSibling) {
