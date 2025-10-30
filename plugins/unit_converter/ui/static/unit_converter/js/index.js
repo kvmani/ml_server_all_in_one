@@ -82,6 +82,7 @@ refreshUnits();
 const converterController = bindForm(form, {
   pendingText: "Converting…",
   successText: "Conversion complete",
+  logContext: "Unit Converter · Direct",
   async onSubmit() {
     if (!form) return;
     const payload = {
@@ -137,6 +138,7 @@ if (resetButton) {
 const expressionController = bindForm(expressionForm, {
   pendingText: "Evaluating…",
   successText: "Expression evaluated",
+  logContext: "Unit Converter · Expression",
   async onSubmit() {
     if (!expressionForm) return;
     const payload = {

@@ -1,4 +1,4 @@
-import { downloadBlob, setupDropzone } from "/static/js/core.js";
+import { downloadBlob, setupDropzone, logMessage } from "/static/js/core.js";
 
 const mergeForm = document.getElementById("merge-form");
 const mergeDropzone = document.getElementById("merge-dropzone");
@@ -20,6 +20,9 @@ const splitFileInput = document.getElementById("split-file");
 let counter = 0;
 const entryMap = new Map();
 
+const mergeContext = "PDF Tools · Merge";
+const splitContext = "PDF Tools · Split";
+
 const parseNumber = (value, fallback) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -36,6 +39,9 @@ function setMergeStatus(message, type = "info") {
   } else {
     delete mergeStatus.dataset.status;
   }
+  if (message) {
+    logMessage(message, type, { context: mergeContext });
+  }
 }
 
 function setSplitStatus(message, type = "info") {
@@ -44,6 +50,9 @@ function setSplitStatus(message, type = "info") {
     splitStatus.dataset.status = type;
   } else {
     delete splitStatus.dataset.status;
+  }
+  if (message) {
+    logMessage(message, type, { context: splitContext });
   }
 }
 
@@ -210,6 +219,7 @@ function addEntry(file) {
   entryMap.set(id, { file, url, element: entry, metadata: undefined });
   renderThumbnail(entry, url, file.name);
   mergeDropzone?.classList.add("has-file");
+  setMergeStatus(`Queued ${file.name} (${humanSize(file.size)})`, "info");
   requestMetadata(id);
 }
 
@@ -224,7 +234,7 @@ function clearEntries() {
 function handleIncomingFiles(files) {
   const accepted = files.filter((file) => file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"));
   if (!accepted.length) {
-    setMergeStatus("Only PDF files are supported", "error");
+    setMergeStatus("Unsupported file format. Please upload PDF files only.", "error");
     return;
   }
 
@@ -328,7 +338,7 @@ setupDropzone(mergeDropzone, mergePicker, {
   onFiles(files, meta) {
     if (!files.length) {
       if (meta?.rejected?.length) {
-        setMergeStatus("Only PDF files are supported", "error");
+        setMergeStatus("Unsupported file format. Please upload PDF files only.", "error");
       }
       if (!entryMap.size) {
         mergeDropzone?.classList.remove("has-file");
@@ -380,7 +390,7 @@ if (mergeForm) {
     }
     formData.append("output_name", outputName);
 
-    setMergeStatus("Merging…", "progress");
+    setMergeStatus("Merge in progress. Please wait…", "progress");
     try {
       const response = await fetch("/pdf_tools/api/v1/merge", {
         method: "POST",
@@ -393,7 +403,7 @@ if (mergeForm) {
       const blob = await response.blob();
       const filename = parseDisposition(response.headers.get("Content-Disposition")) || outputName;
       downloadBlob(blob, filename);
-      setMergeStatus(`Downloaded ${filename}`, "success");
+      setMergeStatus(`Merged PDF saved as ${filename}`, "success");
     } catch (error) {
       setMergeStatus(error instanceof Error ? error.message : "Merge failed", "error");
     }
@@ -405,12 +415,12 @@ setupDropzone(splitDropzone, splitFileInput, {
   onFiles(files, meta) {
     if (!files.length) {
       if (meta?.rejected?.length) {
-        setSplitStatus("Only PDF files are supported", "error");
+        setSplitStatus("Unsupported file format. Please upload PDF files only.", "error");
       }
       splitDropzone?.classList.remove("has-file");
       return;
     }
-    setSplitStatus(`${files[0].name} ready to split`, "success");
+    setSplitStatus(`Loaded ${files[0].name}. Segmenting pages soon.`, "info");
     splitDropzone?.classList.add("has-file");
     splitResults.hidden = true;
     splitList.innerHTML = "";
@@ -425,14 +435,14 @@ if (splitForm) {
   splitForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!splitFileInput.files || !splitFileInput.files.length) {
-      setSplitStatus("Select a PDF file", "error");
+      setSplitStatus("Select a PDF file before splitting", "error");
       return;
     }
     const formData = new FormData();
     const file = splitFileInput.files[0];
     formData.append("file", file, file.name);
 
-    setSplitStatus("Splitting…", "progress");
+    setSplitStatus("Splitting PDF pages. Please wait…", "progress");
     try {
       const response = await fetch("/pdf_tools/api/v1/split", {
         method: "POST",
@@ -458,7 +468,7 @@ if (splitForm) {
         splitList.appendChild(item);
       });
       splitResults.hidden = false;
-      setSplitStatus(`Created ${payload.pages.length} page(s)`, "success");
+      setSplitStatus(`Pages ready to download (${payload.pages.length})`, "success");
       splitDropzone?.classList.remove("has-file");
     } catch (error) {
       setSplitStatus(error instanceof Error ? error.message : "Split failed", "error");

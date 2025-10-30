@@ -310,6 +310,7 @@ if (inferenceForm) {
   inferenceController = bindForm(inferenceForm, {
     pendingText: "Predicting…",
     successText: "Prediction ready",
+    logContext: "Tabular ML · Inference",
     async onSubmit() {
       if (!currentDatasetId) {
         throw new Error("Load a dataset and train a model first");
@@ -349,6 +350,7 @@ if (batchForm) {
   batchController = bindForm(batchForm, {
     pendingText: "Running batch inference…",
     successText: "Batch predictions ready",
+    logContext: "Tabular ML · Batch",
     async onSubmit() {
       if (!currentDatasetId) {
         throw new Error("Load a dataset and train a model first");
@@ -593,6 +595,7 @@ function renderScatter(data) {
 const datasetController = bindForm(datasetForm, {
   pendingText: "Uploading…",
   successText: "Dataset loaded",
+  logContext: "Tabular ML · Dataset",
   async onSubmit(formData) {
     if (!datasetInput.files || !datasetInput.files.length) {
       throw new Error("Select a CSV dataset");
@@ -689,6 +692,7 @@ datasetClear.addEventListener("click", async () => {
 const scatterController = bindForm(scatterForm, {
   pendingText: "Generating scatter…",
   successText: "Scatter updated",
+  logContext: "Tabular ML · Scatter",
   async onSubmit() {
     if (!currentDatasetId) {
       throw new Error("Load a dataset first");
@@ -726,6 +730,7 @@ scatterReset.addEventListener("click", () => {
 const trainController = bindForm(trainForm, {
   pendingText: "Training…",
   successText: "Training complete",
+  logContext: "Tabular ML · Training",
   async onSubmit() {
     if (!currentDatasetId) {
       throw new Error("Load a dataset before training");

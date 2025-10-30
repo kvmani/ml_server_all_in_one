@@ -1,3 +1,131 @@
+const LOG_MAX_ENTRIES = 50;
+const LOG_LEVEL_CLASS = {
+  success: 'log-window__entry--success',
+  error: 'log-window__entry--error',
+  warning: 'log-window__entry--warning',
+  progress: 'log-window__entry--progress',
+};
+
+const logWindowController = (() => {
+  const container = document.querySelector('[data-log-window]');
+  if (!container) {
+    return { push() {}, clear() {} };
+  }
+
+  const list = container.querySelector('[data-log-list]');
+  const toggle = container.querySelector('[data-log-toggle]');
+  const clearButton = container.querySelector('[data-log-clear]');
+  const emptyState = container.querySelector('[data-log-empty]');
+
+  let collapsed = container.dataset.state === 'collapsed';
+
+  const updateState = () => {
+    container.dataset.state = collapsed ? 'collapsed' : 'open';
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      toggle.setAttribute('aria-label', collapsed ? 'Show activity log' : 'Hide activity log');
+    }
+    if (clearButton) {
+      clearButton.disabled = !list || list.children.length === 0;
+    }
+  };
+
+  const updateEmpty = () => {
+    if (!emptyState || !list) {
+      return;
+    }
+    emptyState.hidden = list.children.length > 0;
+  };
+
+  const setOpen = (open) => {
+    const shouldCollapse = !open;
+    if (collapsed === shouldCollapse) {
+      return;
+    }
+    collapsed = shouldCollapse;
+    updateState();
+  };
+
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      collapsed = !collapsed;
+      updateState();
+    });
+  }
+
+  if (clearButton) {
+    clearButton.addEventListener('click', () => {
+      if (list) {
+        list.innerHTML = '';
+      }
+      updateEmpty();
+      updateState();
+    });
+  }
+
+  updateState();
+  updateEmpty();
+
+  const push = (message, level = 'info') => {
+    if (!list || !message) {
+      return;
+    }
+    const entry = document.createElement('li');
+    entry.className = 'log-window__entry';
+    const normalised = typeof level === 'string' ? level.toLowerCase() : 'info';
+    const levelClass = LOG_LEVEL_CLASS[normalised];
+    if (levelClass) {
+      entry.classList.add(levelClass);
+    }
+
+    const time = document.createElement('span');
+    time.className = 'log-window__time';
+    time.textContent = new Date().toLocaleTimeString([], { hour12: false });
+
+    const text = document.createElement('p');
+    text.className = 'log-window__message';
+    text.textContent = message;
+
+    entry.append(time, text);
+    list.append(entry);
+
+    while (list.children.length > LOG_MAX_ENTRIES) {
+      list.removeChild(list.firstChild);
+    }
+
+    updateEmpty();
+    updateState();
+    setOpen(true);
+  };
+
+  return {
+    push,
+    clear() {
+      if (list) {
+        list.innerHTML = '';
+      }
+      updateEmpty();
+      updateState();
+    },
+  };
+})();
+
+export function logMessage(message, level = 'info', { context } = {}) {
+  if (message == null) {
+    return;
+  }
+  const trimmed = String(message).trim();
+  if (!trimmed) {
+    return;
+  }
+  const normalised = typeof level === 'string' ? level.toLowerCase() : 'info';
+  const safeLevel = Object.prototype.hasOwnProperty.call(LOG_LEVEL_CLASS, normalised)
+    ? normalised
+    : 'info';
+  const formatted = context ? `${context}: ${trimmed}` : trimmed;
+  logWindowController.push(formatted, safeLevel);
+}
+
 function applyTheme(theme) {
   if (!theme) return;
   document.documentElement.setAttribute('data-theme', theme);
@@ -83,7 +211,10 @@ function initNavigation() {
   });
 }
 
-export function bindForm(form, { onSubmit, pendingText = 'Processing…', successText = 'Done' }) {
+export function bindForm(
+  form,
+  { onSubmit, pendingText = 'Processing…', successText = 'Done', logContext }
+) {
   if (!form) {
     return { setStatus() {} };
   }
@@ -98,6 +229,9 @@ export function bindForm(form, { onSubmit, pendingText = 'Processing…', succes
         delete el.dataset.status;
       }
     });
+    if (message) {
+      logMessage(message, type, { context: logContext });
+    }
   };
 
   form.addEventListener('submit', async (event) => {

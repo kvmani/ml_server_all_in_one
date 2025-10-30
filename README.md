@@ -10,6 +10,7 @@ An offline-first Flask platform bundling microstructure analysis, PDF workflows,
 | **PDF Tools** | Queue up to 10 PDFs, reorder with drag handles, apply per-file page ranges, merge instantly, or split a single PDF into per-page downloads. |
 | **Tabular ML** | Upload CSV datasets (≤2 MB), preview rows, build scatter plots, auto-detect regression vs. classification, and inspect top feature importances. |
 | **Unit Converter** | Convert between engineering units with Pint-backed accuracy, interval-aware temperature deltas, expression evaluation, and configurable precision. |
+| **Global Activity Log** | Persistent, non-invasive footer console that surfaces upload status, validation warnings, and task progress across every tool in real time. |
 
 Browse in-app help for each workspace via the header **Help** link or jump directly:
 
@@ -18,6 +19,17 @@ Browse in-app help for each workspace via the header **Help** link or jump direc
 - `/help/pdf_tools`
 - `/help/tabular_ml`
 - `/help/unit_converter`
+
+### Unified activity window
+
+A docked activity window now appears at the bottom of every page. It auto-expands whenever a tool posts a message—upload limits, validation errors, or long-running jobs such as segmentation and PDF splitting. Typical events include:
+
+- `Loaded image successfully. sample_micrograph.png (1.82 MB)`
+- `Segmentation is in process. Please wait…`
+- `Unsupported file format. Please upload PDF files only.`
+- `Pages ready to download (8)`
+
+The log never persists to disk and clears with a single click, keeping the UX transparent without violating the offline/privacy charter.
 
 Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and architecture notes.
 
@@ -60,6 +72,73 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
    pytest -q
    ```
 
+## Running in different environments
+
+### Air-gapped workstations
+
+1. On a networked staging machine, pre-download dependencies:
+
+   ```bash
+   pip download -r requirements.txt -d wheelhouse
+   ```
+
+   Copy the repository plus the `wheelhouse/` directory to the air-gapped host.
+
+2. Create and activate a virtual environment:
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
+
+3. Install from the local wheel cache without touching the internet:
+
+   ```bash
+   pip install --no-index --find-links ./wheelhouse -r requirements.txt
+   ```
+
+4. Run the server offline:
+
+   ```bash
+   export FLASK_APP=app:create_app
+   python scripts/run_dev.py
+   ```
+
+   All uploads stay in-memory; the bottom activity log will surface file-size checks (e.g., `File exceeds allowed limit (5 MB)`).
+
+### GitHub Codespaces
+
+1. Create a Codespace from the repository and wait for the container to build.
+2. Initialise the environment:
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+3. Launch the dev server (it already binds to `0.0.0.0`):
+
+   ```bash
+   export FLASK_APP=app:create_app
+   python scripts/run_dev.py
+   ```
+
+4. Forward port 5000 in the Codespaces UI. The activity log appears once you upload a sample file—helpful when verifying that transfers never leave the Codespace sandbox.
+
+### Windows (PowerShell)
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+set FLASK_APP=app:create_app
+python scripts\run_dev.py
+pytest -q
+```
+
+The logging window mirrors the same status messages, so you receive `Segmentation is in process. Please wait…` prompts directly in the Windows browser.
+
 ## Configuration summary
 
 - **`config.yml`** – single source of truth for site branding, theme palettes, upload thresholds, and help endpoints. The Flask factory loads it on startup and shares values with templates via context processors.
@@ -78,5 +157,7 @@ Refer to [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) for plugin scaffol
 ## Development notes
 
 - Reuse `setupDropzone`, `bindForm`, and `downloadBlob` from `app/ui/static/js/core.js` for consistent behaviours across tools.
+- Report user-facing progress through the shared activity window via `logMessage` (exposed from `app/ui/static/js/core.js`).
+- Parse numeric/boolean form values with `common.forms.get_float`, `get_int`, and `get_bool` to keep validation consistent across plugins.
 - New UI components should consume CSS variables defined in `core.css`; extend with additional custom properties when introducing new themes.
 - Keep binary assets (screenshots, datasets, etc.) outside version control. Generate previews in the sandbox when preparing reports or PRs.

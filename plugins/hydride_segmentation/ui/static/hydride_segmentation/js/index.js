@@ -1,4 +1,4 @@
-import { downloadBlob, setupDropzone } from "/static/js/core.js";
+import { downloadBlob, setupDropzone, logMessage } from "/static/js/core.js";
 
 const form = document.getElementById("segment-form");
 const statusEl = form.querySelector("[data-role='status']");
@@ -34,6 +34,9 @@ const sizeHist = document.getElementById("size-hist");
 const angleHist = document.getElementById("angle-hist");
 const combinedPanel = document.getElementById("combined-panel");
 
+const logContext = "Hydride Segmentation";
+const pipelineContext = "Hydride Segmentation · Pipeline";
+
 const defaults = new Map();
 parameterInputs.forEach((input) => defaults.set(input.name, input.value));
 defaults.set("crop_enabled", cropToggle.checked);
@@ -55,6 +58,9 @@ function setStatus(message, type = "info") {
     statusEl.dataset.status = type;
   } else {
     delete statusEl.dataset.status;
+  }
+  if (message) {
+    logMessage(message, type, { context: logContext });
   }
 }
 
@@ -264,7 +270,11 @@ const resetDropzone = setupDropzone(dropzone, fileInput, {
     }
     const [file] = files;
     updatePreview(file);
-    setStatus(`${file.name} ready`, "success");
+    const sizeMb = file.size / (1024 * 1024);
+    setStatus(
+      `Loaded image successfully. ${file.name} (${sizeMb.toFixed(2)} MB)`,
+      "success",
+    );
   },
 });
 if (browseButton) {
@@ -300,7 +310,7 @@ form.addEventListener("submit", async (event) => {
     }
   }
 
-  setStatus("Processing…", "progress");
+  setStatus("Segmentation is in process. Please wait…", "progress");
   try {
     const response = await fetch("/hydride_segmentation/api/v1/segment", {
       method: "POST",
@@ -312,7 +322,10 @@ form.addEventListener("submit", async (event) => {
     }
     const payload = await response.json();
     pushHistory(payload);
-    setStatus("Segmentation complete", "success");
+    setStatus("Segmentation complete. Metrics ready.", "success");
+    payload.logs.forEach((line) => {
+      logMessage(line, "info", { context: pipelineContext });
+    });
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Segmentation failed", "error");
   }
