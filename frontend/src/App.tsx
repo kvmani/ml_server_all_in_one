@@ -1,32 +1,44 @@
-import { useMemo } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { LoadingOverlay } from "./components/LoadingOverlay";
 import { useAppContext } from "./contexts/AppContext";
 import { useTheme } from "./hooks/useTheme";
-import HomePage from "./pages/HomePage";
-import PdfToolsPage from "./pages/PdfToolsPage";
-import UnitConverterPage from "./pages/UnitConverterPage";
-import HydrideSegmentationPage from "./pages/HydrideSegmentationPage";
-import TabularMlPage from "./pages/TabularMlPage";
 import ErrorPage from "./pages/ErrorPage";
+import HelpPage from "./pages/HelpPage";
+import HomePage from "./pages/HomePage";
+import HydrideSegmentationPage from "./pages/HydrideSegmentationPage";
+import PdfToolsPage from "./pages/PdfToolsPage";
+import TabularMlPage from "./pages/TabularMlPage";
+import UnitConverterPage from "./pages/UnitConverterPage";
 
-const PAGE_COMPONENTS: Record<string, React.ComponentType<{ props: Record<string, unknown> }>> = {
-  home: HomePage,
-  pdf_tools: PdfToolsPage,
-  unit_converter: UnitConverterPage,
-  hydride_segmentation: HydrideSegmentationPage,
-  tabular_ml: TabularMlPage,
-  error: ErrorPage,
-};
-
-export default function App() {
-  const { page, props, currentTheme } = useAppContext();
+function AppContent() {
+  const { currentTheme } = useAppContext();
   useTheme(currentTheme);
-
-  const PageComponent = useMemo(() => PAGE_COMPONENTS[page] ?? ErrorPage, [page]);
 
   return (
     <Layout>
-      <PageComponent props={props} />
+      <LoadingOverlay />
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/tools/pdf_tools" element={<PdfToolsPage />} />
+        <Route path="/pdf_tools/*" element={<Navigate to="/tools/pdf_tools" replace />} />
+        <Route path="/tools/unit_converter" element={<UnitConverterPage />} />
+        <Route path="/unit_converter/*" element={<Navigate to="/tools/unit_converter" replace />} />
+        <Route path="/tools/hydride_segmentation" element={<HydrideSegmentationPage />} />
+        <Route path="/hydride_segmentation/*" element={<Navigate to="/tools/hydride_segmentation" replace />} />
+        <Route path="/tools/tabular_ml" element={<TabularMlPage />} />
+        <Route path="/tabular_ml/*" element={<Navigate to="/tools/tabular_ml" replace />} />
+        <Route path="/help/:slug" element={<HelpPage />} />
+        <Route path="*" element={<ErrorPage status={404} title="Page not found" message="The requested route does not exist." />} />
+      </Routes>
     </Layout>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   );
 }

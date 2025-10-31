@@ -1,0 +1,39 @@
+{
+  "ui": [
+    {
+      "file": "frontend/src/pages/PdfToolsPage.tsx",
+      "status": "updated",
+      "notes": "Integrated SettingsModal, metadata preferences, and global loader while targeting /api/pdf_tools/* endpoints."
+    },
+    {
+      "file": "frontend/src/pages/HydrideSegmentationPage.tsx",
+      "status": "migrated",
+      "notes": "Consumes /api/hydride_segmentation/segment, exposes per-tool settings, and removes reliance on server props."
+    },
+    {
+      "file": "frontend/src/pages/UnitConverterPage.tsx",
+      "status": "migrated",
+      "notes": "Loads families via /api/unit_converter/families, adds persistent preferences, and standardises conversions."
+    },
+    {
+      "file": "frontend/src/components/ChartPanel.tsx",
+      "status": "added",
+      "notes": "Provides shared Recharts wrapper for scatter/line/bar data using the unified JSON contract."
+    },
+    {
+      "file": "frontend/src/components/LoadingOverlay.tsx",
+      "status": "added",
+      "notes": "Global loading indicator driven by LoadingContext; accessible focus management." 
+    },
+    {
+      "file": "frontend/src/components/SettingsModal.tsx",
+      "status": "added",
+      "notes": "Reusable modal for per-tool preferences with keyboard focus trap and ARIA wiring."
+    },
+    {
+      "file": "frontend/src/pages/TabularMlPage.tsx",
+      "status": "migrated",
+      "notes": "Ported to React SPA hooks with chart visualisations, per-tool settings, and unified /api/tabular_ml endpoints."
+    }
+  ]
+}

@@ -66,7 +66,7 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
    cd ..
    ```
 
-   The Vite build places hashed React assets under `app/ui/static/react/`. Re-run the build whenever you change files in `frontend/`.
+   The Vite build places hashed React assets under `app/ui/static/react/`. Re-run the build whenever you change files in `frontend/`. During local development you can skip the build step and rely on the Vite dev server instead (see step 5).
 
 4. **Review configuration** (optional)
 
@@ -77,22 +77,39 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
      - Per-plugin limits (e.g., `plugins.pdf_tools.merge_upload.max_mb`)
      - Documentation links (`plugins.<tool>.docs`)
 
-5. **Run the development server**
+5. **Run the development servers**
+
+   Terminal A (Flask API):
 
    ```bash
-    export FLASK_APP=app:create_app
-    python scripts/run_dev.py
+   export FLASK_APP=app:create_app
+   python scripts/run_dev.py
    ```
 
-   Visit `http://localhost:5000/?theme=<theme-key>` to preview the UI. Use the header toggle to switch between light and dark palettes—URLs update with the active theme for easy sharing.
+   Terminal B (React SPA with proxy to Flask):
 
-6. **Execute tests**
+   ```bash
+   cd frontend
+   npm run dev -- --host
+   ```
+
+   Visit `http://localhost:5173/?theme=<theme-key>` while the Vite dev server is running. API calls are automatically proxied to the Flask app at `http://localhost:5000`.
+
+6. **Execute backend tests**
 
    ```bash
    pytest -q
    ```
 
-7. **Run Playwright end-to-end suite**
+7. **Run frontend unit tests**
+
+   ```bash
+   cd frontend
+   npm run test
+   cd ..
+   ```
+
+8. **Run Playwright end-to-end suite**
 
    ```bash
    cd frontend

@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { AppContext, normaliseInitialState } from "./contexts/AppContext";
+import { LoadingProvider } from "./contexts/LoadingContext";
 import { LogProvider } from "./contexts/LogContext";
 import type { InitialState } from "./types";
 import "./styles/core.css";
@@ -30,19 +31,20 @@ function AppWrapper() {
   return (
     <AppContext.Provider
       value={{
-        page: initial.page,
         currentTheme,
         defaultTheme: initial.defaultTheme,
         themeOptions: initial.themeOptions,
         manifests: initial.manifests,
         siteSettings: initial.siteSettings,
-        props: initial.props,
+        pluginSettings: initial.pluginSettings,
         setTheme: setCurrentTheme,
       }}
     >
-      <LogProvider>
-        <App />
-      </LogProvider>
+      <LoadingProvider>
+        <LogProvider>
+          <App />
+        </LogProvider>
+      </LoadingProvider>
     </AppContext.Provider>
   );
 }

@@ -1,13 +1,13 @@
-import { FormEvent, useCallback, useMemo, useRef, useState } from "react";
-import { useStatus } from "../hooks/useStatus";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SettingsModal, type SettingsField } from "../components/SettingsModal";
 import { StatusMessage } from "../components/StatusMessage";
+import { useLoading } from "../contexts/LoadingContext";
+import { usePluginSettings } from "../hooks/usePluginSettings";
+import { useStatus } from "../hooks/useStatus";
+import { useToolSettings } from "../hooks/useToolSettings";
+import { apiFetch } from "../utils/api";
 import { base64ToBlob, downloadBlob } from "../utils/files";
 import "../styles/hydride_segmentation.css";
-
-type HydrideProps = {
-  helpHref?: string;
-  maxMb?: number;
-};
 
 type SegmentationResult = {
   images: {
@@ -47,18 +47,59 @@ const DEFAULTS = {
   crop_enabled: false,
 };
 
-export default function HydrideSegmentationPage({ props }: { props: Record<string, unknown> }) {
-  const { helpHref, maxMb = 5 } = props as HydrideProps;
+type HydridePreferences = {
+  defaultModel: "conventional" | "ml";
+  previewBrightness: number;
+  previewContrast: number;
+  autoResetImage: boolean;
+};
+
+type SegmentApiResponse = {
+  input_png_b64: string;
+  mask_png_b64: string;
+  overlay_png_b64: string;
+  analysis: {
+    orientation_map_png_b64: string;
+    size_histogram_png_b64: string;
+    angle_histogram_png_b64: string;
+    combined_panel_png_b64: string;
+    [key: string]: unknown;
+  };
+  logs: string[];
+  metrics: Record<string, number>;
+  parameters: Record<string, unknown>;
+};
+
+export default function HydrideSegmentationPage() {
+  const pluginConfig = usePluginSettings<{ upload?: { max_mb?: number }; docs?: string }>(
+    "hydride_segmentation",
+    {},
+  );
+  const uploadLimit = pluginConfig.upload || {};
+  const maxMb = Number(uploadLimit.max_mb ?? 5);
+  const helpHref =
+    typeof pluginConfig.docs === "string" ? pluginConfig.docs : "/help/hydride_segmentation";
+  const { withLoader } = useLoading();
+  const { settings: preferences, updateSetting, resetSettings } = useToolSettings<HydridePreferences>(
+    "hydride_segmentation",
+    {
+      defaultModel: "conventional",
+      previewBrightness: 0,
+      previewContrast: 100,
+      autoResetImage: false,
+    },
+  );
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const status = useStatus({ message: "Drop a microscopy image to begin", level: "info" }, {
     context: "Hydride Segmentation",
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>(SAMPLE_IMAGE);
-  const [model, setModel] = useState<string>(DEFAULTS.model);
+  const [model, setModel] = useState<string>(preferences.defaultModel);
   const [cropEnabled, setCropEnabled] = useState<boolean>(DEFAULTS.crop_enabled);
   const [cropPercent, setCropPercent] = useState<string>(DEFAULTS.crop_percent);
-  const [brightness, setBrightness] = useState<number>(0);
-  const [contrast, setContrast] = useState<number>(100);
+  const [brightness, setBrightness] = useState<number>(preferences.previewBrightness);
+  const [contrast, setContrast] = useState<number>(preferences.previewContrast);
   const [history, setHistory] = useState<SegmentationResult[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -67,6 +108,55 @@ export default function HydrideSegmentationPage({ props }: { props: Record<strin
 
   const canGoBack = historyIndex > 0;
   const canGoForward = historyIndex >= 0 && historyIndex < history.length - 1;
+
+  useEffect(() => {
+    setModel(preferences.defaultModel);
+  }, [preferences.defaultModel]);
+
+  useEffect(() => {
+    setBrightness(preferences.previewBrightness);
+    setContrast(preferences.previewContrast);
+  }, [preferences.previewBrightness, preferences.previewContrast]);
+
+  const settingsFields = useMemo<SettingsField[]>(
+    () => [
+      {
+        key: "defaultModel",
+        label: "Default backend",
+        type: "select",
+        options: [
+          { value: "conventional", label: "Conventional (parameterised)" },
+          { value: "ml", label: "ML proxy (auto)" },
+        ],
+        description: "Applied whenever the workspace resets.",
+      },
+      {
+        key: "previewBrightness",
+        label: "Default preview brightness",
+        type: "number",
+        min: -100,
+        max: 100,
+        step: 5,
+        description: "Offset applied to the preview image. 0 keeps the original exposure.",
+      },
+      {
+        key: "previewContrast",
+        label: "Default preview contrast (%)",
+        type: "number",
+        min: 50,
+        max: 200,
+        step: 5,
+        description: "100 preserves the source. Higher values boost contrast.",
+      },
+      {
+        key: "autoResetImage",
+        label: "Reset image after segmentation",
+        type: "boolean",
+        description: "Clear the upload area once results are ready.",
+      },
+    ],
+    [],
+  );
 
   const setCurrentResult = (result: SegmentationResult) => {
     setHistory((prev) => {
@@ -82,7 +172,9 @@ export default function HydrideSegmentationPage({ props }: { props: Record<strin
     }
     setImageFile(null);
     setImagePreview(SAMPLE_IMAGE);
-  }, [imagePreview]);
+    setBrightness(preferences.previewBrightness);
+    setContrast(preferences.previewContrast);
+  }, [imagePreview, preferences.previewBrightness, preferences.previewContrast]);
 
   const onFilesSelected = useCallback(
     (files: FileList | File[]) => {
@@ -129,14 +221,14 @@ export default function HydrideSegmentationPage({ props }: { props: Record<strin
     }
   };
 
-  const resetParameters = () => {
-    setModel(DEFAULTS.model);
+  const resetParameters = useCallback(() => {
+    setModel(preferences.defaultModel);
     setCropEnabled(DEFAULTS.crop_enabled);
     setCropPercent(DEFAULTS.crop_percent);
-    setBrightness(0);
-    setContrast(100);
+    setBrightness(preferences.previewBrightness);
+    setContrast(preferences.previewContrast);
     status.setStatus("Parameters reset to defaults", "info");
-  };
+  }, [preferences.defaultModel, preferences.previewBrightness, preferences.previewContrast, status]);
 
   const clearResults = () => {
     setHistory([]);
@@ -162,29 +254,31 @@ export default function HydrideSegmentationPage({ props }: { props: Record<strin
       } else {
         formData.delete("crop_enabled");
       }
-      const response = await fetch("/hydride_segmentation/api/v1/segment", {
-        method: "POST",
-        body: formData,
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error || "Segmentation failed");
-      }
+      const payload = await withLoader(() =>
+        apiFetch<SegmentApiResponse>("/api/hydride_segmentation/segment", {
+          method: "POST",
+          body: formData,
+        }),
+      );
+      const analysis = payload.analysis || {};
       const result: SegmentationResult = {
         images: {
           input: payload.input_png_b64,
           mask: payload.mask_png_b64,
           overlay: payload.overlay_png_b64,
-          orientation: payload.analysis.orientation_map_png_b64,
-          sizeHistogram: payload.analysis.size_histogram_png_b64,
-          angleHistogram: payload.analysis.angle_histogram_png_b64,
-          combined: payload.analysis.combined_panel_png_b64,
+          orientation: analysis.orientation_map_png_b64 ?? "",
+          sizeHistogram: analysis.size_histogram_png_b64 ?? "",
+          angleHistogram: analysis.angle_histogram_png_b64 ?? "",
+          combined: analysis.combined_panel_png_b64 ?? "",
         },
-        metrics: payload.metrics,
+        metrics: payload.metrics || {},
         logs: payload.logs || [],
         parameters: payload.parameters || {},
       };
       setCurrentResult(result);
+      if (preferences.autoResetImage) {
+        resetImagePreview();
+      }
       status.setStatus("Segmentation complete", "success");
     } catch (error) {
       status.setStatus(error instanceof Error ? error.message : "Segmentation failed", "error");
@@ -241,6 +335,9 @@ export default function HydrideSegmentationPage({ props }: { props: Record<strin
             <li>Result history allows undo / redo across segmentation runs</li>
           </ul>
           <div className="tool-shell__actions">
+            <button className="btn btn--ghost" type="button" onClick={() => setSettingsOpen(true)}>
+              ⚙️ Settings
+            </button>
             <a className="btn btn--subtle" data-keep-theme href={typeof helpHref === "string" ? helpHref : "/help/hydride_segmentation"}>
               Read hydride guide
             </a>
@@ -632,6 +729,18 @@ export default function HydrideSegmentationPage({ props }: { props: Record<strin
           )}
         </form>
       </div>
+      <SettingsModal
+        isOpen={settingsOpen}
+        title="Hydride segmentation preferences"
+        description="Tune default backend selection and preview adjustments."
+        fields={settingsFields}
+        values={preferences}
+        onChange={(key, value) =>
+          updateSetting(key as keyof HydridePreferences, value as HydridePreferences[keyof HydridePreferences])
+        }
+        onReset={() => resetSettings()}
+        onClose={() => setSettingsOpen(false)}
+      />
     </section>
   );
 }

@@ -1,8 +1,16 @@
-export default function ErrorPage({ props }: { props: Record<string, unknown> }) {
-  const status = (props?.status as number) ?? 500;
-  const title = (props?.title as string) ?? "Something went wrong";
-  const message = (props?.message as string) ?? "An unexpected error occurred.";
+import { Link } from "react-router-dom";
 
+type ErrorPageProps = {
+  status?: number;
+  title?: string;
+  message?: string;
+};
+
+export default function ErrorPage({
+  status = 500,
+  title = "Something went wrong",
+  message = "An unexpected error occurred.",
+}: ErrorPageProps) {
   return (
     <section className="shell surface-block" aria-labelledby="error-title">
       <h1 id="error-title" className="section-heading">
@@ -10,9 +18,9 @@ export default function ErrorPage({ props }: { props: Record<string, unknown> })
       </h1>
       <p>{message}</p>
       <p>
-        <a className="btn" href="/">
+        <Link className="btn" data-keep-theme to="/">
           Return home
-        </a>
+        </Link>
       </p>
     </section>
   );

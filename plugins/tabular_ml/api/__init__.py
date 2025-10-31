@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-from flask import Blueprint, Response, current_app, render_template, request, url_for
+from flask import Blueprint, Response, current_app, request
 
 from common.errors import ValidationAppError
 from common.responses import fail, ok
@@ -34,16 +34,6 @@ from ..core import (
     train_on_dataset,
 )
 
-ui_bp = Blueprint(
-    "tabular_ml",
-    __name__,
-    url_prefix="/tabular_ml",
-    template_folder="../ui/templates",
-    static_folder="../ui/static/tabular_ml",
-    static_url_path="/static",
-)
-
-
 def _upload_limits() -> FileLimit:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("tabular_ml", {})
     upload = settings.get("upload", {})
@@ -60,38 +50,7 @@ def _upload_limits() -> FileLimit:
     return FileLimit(max_files=max_files_int or 1, max_size=max_bytes)
 
 
-@ui_bp.get("/")
-def index() -> str:
-    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("tabular_ml", {})
-    renderer = current_app.extensions.get("render_react")
-    force_classic = request.args.get("ui") == "classic"
-    if not renderer or force_classic:
-        return render_template("tabular_ml/index.html", plugin_settings=settings)
-
-    theme_state = current_app.extensions.get("theme_state")
-    apply_theme = current_app.extensions.get("theme_url")
-    _, _, current_theme = (
-        theme_state() if callable(theme_state) else ({}, "midnight", "midnight")
-    )
-    theme_apply = (
-        apply_theme if callable(apply_theme) else (lambda value, _theme: value)
-    )
-
-    docs_url = settings.get("docs")
-    if docs_url:
-        help_href = theme_apply(docs_url, current_theme)
-    else:
-        help_href = theme_apply(url_for("help_page", slug="tabular_ml"), current_theme)
-
-    props = {
-        "helpHref": help_href,
-        "upload": settings.get("upload", {}),
-    }
-    return renderer("tabular_ml", props)
-
-
 api_bp = Blueprint("tabular_ml_api", __name__, url_prefix="/api/tabular_ml")
-legacy_bp = Blueprint("tabular_ml_legacy", __name__, url_prefix="/tabular_ml/api/v1")
 
 
 def _profile_payload(profile: DatasetProfile) -> dict[str, Any]:
@@ -478,77 +437,7 @@ def algorithms() -> Response:
     return ok({"algorithms": algorithm_metadata()})
 
 
-@legacy_bp.post("/datasets")
-def legacy_create_dataset() -> Response:
-    return create_dataset()
-
-
-@legacy_bp.delete("/datasets/<dataset_id>")
-def legacy_delete_dataset(dataset_id: str) -> Response:
-    return delete_dataset(dataset_id)
-
-
-@legacy_bp.post("/datasets/<dataset_id>/scatter")
-def legacy_scatter(dataset_id: str) -> Response:
-    return scatter(dataset_id)
-
-
-@legacy_bp.post("/datasets/<dataset_id>/histogram")
-def legacy_histogram(dataset_id: str) -> Response:
-    return histogram(dataset_id)
-
-
-@legacy_bp.post("/datasets/<dataset_id>/train")
-def legacy_train(dataset_id: str) -> Response:
-    return train(dataset_id)
-
-
-@legacy_bp.post("/datasets/<dataset_id>/preprocess/outliers/detect")
-def legacy_detect_outliers(dataset_id: str) -> Response:
-    return detect_outliers_endpoint(dataset_id)
-
-
-@legacy_bp.post("/datasets/<dataset_id>/preprocess/outliers/remove")
-def legacy_remove_outliers(dataset_id: str) -> Response:
-    return remove_outliers_endpoint(dataset_id)
-
-
-@legacy_bp.post("/datasets/<dataset_id>/preprocess/filter")
-def legacy_filter(dataset_id: str) -> Response:
-    return apply_filters_endpoint(dataset_id)
-
-
-@legacy_bp.post("/datasets/<dataset_id>/predict")
-def legacy_predict(dataset_id: str) -> Response:
-    return predict(dataset_id)
-
-
-@legacy_bp.post("/datasets/<dataset_id>/predict/batch")
-def legacy_predict_batch(dataset_id: str) -> Response:
-    return predict_batch_endpoint(dataset_id)
-
-
-@legacy_bp.get("/datasets/<dataset_id>/predict/batch")
-def legacy_download_batch(dataset_id: str) -> Response:
-    return download_batch_predictions(dataset_id)
-
-
-@legacy_bp.get("/datasets/<dataset_id>/predictions")
-def legacy_predictions(dataset_id: str) -> Response:
-    return predictions(dataset_id)
-
-
-@legacy_bp.get("/datasets/<dataset_id>/profile")
-def legacy_profile(dataset_id: str) -> Response:
-    return profile(dataset_id)
-
-
-@legacy_bp.get("/algorithms")
-def legacy_algorithms() -> Response:
-    return algorithms()
-
-
-blueprints = [ui_bp, api_bp, legacy_bp]
+blueprints = [api_bp]
 
 
 __all__ = [
@@ -564,5 +453,4 @@ __all__ = [
     "predictions",
     "profile",
     "algorithms",
-    "index",
 ]

@@ -6,7 +6,7 @@ import base64
 import json
 from typing import Iterable
 
-from flask import Blueprint, Response, current_app, render_template, request, url_for
+from flask import Blueprint, Response, current_app, request
 
 from common.errors import AppError, ValidationAppError
 from common.io import secure_filename
@@ -46,48 +46,7 @@ def _split_limit() -> FileLimit:
     return FileLimit.from_settings(upload, default_max_files=1, default_max_mb=5)
 
 
-ui_bp = Blueprint(
-    "pdf_tools",
-    __name__,
-    url_prefix="/pdf_tools",
-    template_folder="../ui/templates",
-    static_folder="../ui/static/pdf_tools",
-    static_url_path="/static",
-)
-
-
-@ui_bp.get("/")
-def index() -> str:
-    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("pdf_tools", {})
-    renderer = current_app.extensions.get("render_react")
-    if not renderer:
-        return render_template("pdf_tools/index.html", plugin_settings=settings)
-
-    theme_state = current_app.extensions.get("theme_state")
-    apply_theme = current_app.extensions.get("theme_url")
-    _, _, current_theme = (
-        theme_state() if callable(theme_state) else ({}, "midnight", "midnight")
-    )
-    theme_apply = (
-        apply_theme if callable(apply_theme) else (lambda value, _theme: value)
-    )
-
-    docs_url = settings.get("docs")
-    if docs_url:
-        help_href = theme_apply(docs_url, current_theme)
-    else:
-        help_href = theme_apply(url_for("help_page", slug="pdf_tools"), current_theme)
-
-    props = {
-        "helpHref": help_href,
-        "mergeUpload": settings.get("merge_upload", {}),
-        "splitUpload": settings.get("split_upload", {}),
-    }
-    return renderer("pdf_tools", props)
-
-
 api_bp = Blueprint("pdf_tools_api", __name__, url_prefix="/api/pdf_tools")
-legacy_bp = Blueprint("pdf_tools_legacy", __name__, url_prefix="/pdf_tools/api/v1")
 
 
 def _load_manifest() -> MergePayload | Response:
@@ -243,22 +202,7 @@ def metadata() -> Response:
     return ok(payload)
 
 
-@legacy_bp.post("/merge")
-def legacy_merge() -> Response:
-    return merge()
-
-
-@legacy_bp.post("/split")
-def legacy_split() -> Response:
-    return split()
-
-
-@legacy_bp.post("/metadata")
-def legacy_metadata() -> Response:
-    return metadata()
-
-
-blueprints = [ui_bp, api_bp, legacy_bp]
+blueprints = [api_bp]
 
 
 __all__ = ["blueprints", "merge", "split", "metadata", "index"]

@@ -10,7 +10,7 @@ from typing import Iterable
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import yaml
-from flask import Flask, render_template, request, url_for
+from flask import Flask, render_template, request
 
 from common.errors import AppError, ensure_app_error
 from common.logging import install_request_logging
@@ -169,25 +169,26 @@ def create_app(config_name: str | None = None) -> Flask:
             entry = dict(manifest)
             blueprint = entry.get("blueprint")
             if blueprint:
-                entry["href"] = _apply_theme(url_for(f"{blueprint}.index"), theme)
-            docs = entry.get("docs")
-            if docs:
-                entry["docs"] = _apply_theme(docs, theme)
+                entry["href"] = _apply_theme(f"/tools/{blueprint}", theme)
+                docs = entry.get("docs")
+                if docs:
+                    entry["docs"] = _apply_theme(docs, theme)
+                elif blueprint:
+                    entry["docs"] = _apply_theme(f"/help/{blueprint}", theme)
             manifests.append(entry)
         return manifests
 
-    def _render_react_page(page: str, props: dict | None = None, status: int = 200):
+    def _render_react_page(status: int = 200):
         themes, default_theme, current_theme = _theme_state()
         manifests = _prepare_manifests(current_theme)
         site_config = app.config.get("SITE_SETTINGS", {})
         state = {
-            "page": page,
             "currentTheme": current_theme,
             "defaultTheme": default_theme,
             "themeOptions": themes,
             "siteSettings": site_config,
             "manifests": manifests,
-            "props": props or {},
+            "pluginSettings": app.config.get("PLUGIN_SETTINGS", {}),
         }
         assets_map = app.extensions.get(
             "react_assets", {"scripts": [], "styles": [], "preload": []}
@@ -245,21 +246,10 @@ def create_app(config_name: str | None = None) -> Flask:
             "plugin_settings_map": app.config.get("PLUGIN_SETTINGS", {}),
         }
 
-    @app.route("/")
-    def home() -> str:
-        _, _, current_theme = _theme_state()
-        manifests = _prepare_manifests(current_theme)
-        return _render_react_page("home", {"plugins": manifests})
-
-    @app.route("/help/<slug>")
-    def help_page(slug: str) -> str:
-        template_name = f"help/{slug}.html"
-        template_root = Path(app.root_path) / (app.template_folder or "")
-        template_path = template_root / template_name
-        if not template_path.exists():
-            return render_template("errors/400.html"), 404
-        plugin_config = app.config.get("PLUGIN_SETTINGS", {}).get(slug, {})
-        return render_template(template_name, plugin_settings=plugin_config)
+    @app.route("/", defaults={"path": ""})
+    @app.route("/<path:path>")
+    def spa_entry(path: str):
+        return _render_react_page()
 
     @app.errorhandler(400)
     def bad_request(error):  # pragma: no cover - simple template rendering

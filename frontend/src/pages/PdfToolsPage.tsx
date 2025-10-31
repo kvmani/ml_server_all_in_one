@@ -1,6 +1,11 @@
-import { FormEvent, useCallback, useMemo, useRef, useState } from "react";
-import { useStatus } from "../hooks/useStatus";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SettingsModal, type SettingsField } from "../components/SettingsModal";
 import { StatusMessage } from "../components/StatusMessage";
+import { useLoading } from "../contexts/LoadingContext";
+import { usePluginSettings } from "../hooks/usePluginSettings";
+import { useStatus } from "../hooks/useStatus";
+import { useToolSettings } from "../hooks/useToolSettings";
+import { apiFetch } from "../utils/api";
 import { base64ToBlob, downloadBlob } from "../utils/files";
 import "../styles/pdf_tools.css";
 
@@ -27,10 +32,15 @@ type MergeEntry = {
   previewVisible: boolean;
 };
 
-type PdfToolsProps = {
-  helpHref?: string;
-  mergeUpload?: { max_files?: number; max_mb?: number };
-  splitUpload?: { max_mb?: number };
+type PdfPluginConfig = {
+  merge_upload?: { max_files?: number; max_mb?: number };
+  split_upload?: { max_mb?: number };
+};
+
+type PdfToolPreferences = {
+  defaultOutputName: string;
+  autoDownload: boolean;
+  fetchMetadata: boolean;
 };
 
 function parseLimit(raw?: { max_files?: number; max_mb?: number }, defaults: { files: number; mb: number }) {
@@ -43,14 +53,14 @@ function parseLimit(raw?: { max_files?: number; max_mb?: number }, defaults: { f
 async function requestMetadata(file: File): Promise<MergeMetadata | null> {
   const form = new FormData();
   form.append("file", file, file.name);
-  const response = await fetch("/pdf_tools/api/v1/metadata", { method: "POST", body: form });
-  if (!response.ok) {
+  try {
+    return await apiFetch<MergeMetadata>("/api/pdf_tools/metadata", { method: "POST", body: form });
+  } catch (error) {
     return null;
   }
-  return (await response.json()) as MergeMetadata;
 }
 
-async function postMerge(entries: MergeEntry[], outputName: string): Promise<Response> {
+async function postMerge(entries: MergeEntry[], outputName: string) {
   const form = new FormData();
   const manifest = entries.map((entry, index) => {
     const field = `file-${index}`;
@@ -63,27 +73,45 @@ async function postMerge(entries: MergeEntry[], outputName: string): Promise<Res
   });
   form.append("manifest", JSON.stringify(manifest));
   form.append("output_name", outputName);
-  return fetch("/pdf_tools/api/v1/merge", { method: "POST", body: form });
+  return apiFetch<{ filename: string; pdf_base64: string; total_files: number }>("/api/pdf_tools/merge", {
+    method: "POST",
+    body: form,
+  });
 }
 
 async function postSplit(file: File): Promise<string[]> {
   const form = new FormData();
   form.append("file", file, file.name);
-  const response = await fetch("/pdf_tools/api/v1/split", { method: "POST", body: form });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: "Split failed" }));
-    throw new Error(payload.error || "Split failed");
-  }
-  const payload = await response.json();
-  return (payload.pages as string[]) || [];
+  const payload = await apiFetch<{ pages: string[] }>("/api/pdf_tools/split", { method: "POST", body: form });
+  return payload.pages || [];
 }
 
-export default function PdfToolsPage({ props }: { props: Record<string, unknown> }) {
-  const { mergeUpload, splitUpload, helpHref } = props as PdfToolsProps;
-  const mergeLimit = useMemo(() => parseLimit(mergeUpload, { files: 10, mb: 5 }), [mergeUpload]);
-  const splitLimit = useMemo(() => parseLimit(splitUpload, { files: 1, mb: 5 }), [splitUpload]);
+export default function PdfToolsPage() {
+  const pluginConfig = usePluginSettings<PdfPluginConfig>("pdf_tools", {});
+  const mergeLimit = useMemo(
+    () => parseLimit(pluginConfig.merge_upload, { files: 10, mb: 5 }),
+    [pluginConfig.merge_upload],
+  );
+  const splitLimit = useMemo(
+    () => parseLimit(pluginConfig.split_upload, { files: 1, mb: 5 }),
+    [pluginConfig.split_upload],
+  );
   const queueMessage = `Drop up to ${mergeLimit.maxFiles} PDFs (${mergeLimit.maxMb} MB each) to begin`;
   const splitMessage = "Drop a PDF to split";
+  const helpHref = "/help/pdf_tools";
+
+  const { withLoader } = useLoading();
+  const { settings: preferences, updateSetting, resetSettings } = useToolSettings<PdfToolPreferences>(
+    "pdf_tools",
+    {
+      defaultOutputName: "merged.pdf",
+      autoDownload: true,
+      fetchMetadata: true,
+    },
+  );
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [lastMerged, setLastMerged] = useState<{ blob: Blob; filename: string } | null>(null);
+  const [outputName, setOutputName] = useState(preferences.defaultOutputName);
 
   const [entries, setEntries] = useState<MergeEntry[]>([]);
   const [splitFile, setSplitFile] = useState<File | null>(null);
@@ -93,6 +121,42 @@ export default function PdfToolsPage({ props }: { props: Record<string, unknown>
   const pickerRef = useRef<HTMLInputElement | null>(null);
   const splitPickerRef = useRef<HTMLInputElement | null>(null);
   const counterRef = useRef(0);
+
+  useEffect(() => {
+    setOutputName(preferences.defaultOutputName);
+  }, [preferences.defaultOutputName]);
+
+  useEffect(() => {
+    if (preferences.autoDownload && lastMerged) {
+      setLastMerged(null);
+    }
+  }, [lastMerged, preferences.autoDownload]);
+
+  const settingsFields = useMemo<SettingsField[]>(
+    () => [
+      {
+        key: "defaultOutputName",
+        label: "Default merge filename",
+        type: "text",
+        placeholder: "merged.pdf",
+        description: "Applied when the output field is left blank. Extension is enforced automatically.",
+      },
+      {
+        key: "autoDownload",
+        label: "Auto-download merged PDFs",
+        type: "boolean",
+        description:
+          "When enabled the merged file is saved immediately. Disable to keep downloads in the workspace queue.",
+      },
+      {
+        key: "fetchMetadata",
+        label: "Fetch PDF metadata",
+        type: "boolean",
+        description: "Toggle per-file page count and size analysis after uploading.",
+      },
+    ],
+    [],
+  );
 
   const addEntries = useCallback(
     async (files: File[]) => {
@@ -124,17 +188,6 @@ export default function PdfToolsPage({ props }: { props: Record<string, unknown>
           previewVisible: false,
         };
         next.push(entry);
-        requestMetadata(file)
-          .then((metadata) => {
-            setEntries((current) =>
-              current.map((item) => (item.id === id ? { ...item, metadata } : item)),
-            );
-          })
-          .catch(() => {
-            setEntries((current) =>
-              current.map((item) => (item.id === id ? { ...item, metadata: null } : item)),
-            );
-          });
       }
 
       if (next.length) {
@@ -148,6 +201,29 @@ export default function PdfToolsPage({ props }: { props: Record<string, unknown>
     },
     [entries.length, mergeLimit.maxFiles, mergeLimit.maxMb, mergeStatus],
   );
+
+  useEffect(() => {
+    if (!preferences.fetchMetadata) {
+      return;
+    }
+    const pending = entries.filter((entry) => entry.metadata === undefined);
+    if (!pending.length) {
+      return;
+    }
+    pending.forEach((entry) => {
+      requestMetadata(entry.file)
+        .then((metadata) => {
+          setEntries((current) =>
+            current.map((item) => (item.id === entry.id ? { ...item, metadata } : item)),
+          );
+        })
+        .catch(() => {
+          setEntries((current) =>
+            current.map((item) => (item.id === entry.id ? { ...item, metadata: null } : item)),
+          );
+        });
+    });
+  }, [entries, preferences.fetchMetadata]);
 
   const handleFileInput = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -225,31 +301,26 @@ export default function PdfToolsPage({ props }: { props: Record<string, unknown>
         mergeStatus.setStatus("Add at least one PDF", "error");
         return;
       }
-      const form = event.currentTarget;
-      const outputInput = form.querySelector<HTMLInputElement>("#merge-output");
-      const outputName = (outputInput?.value || "merged.pdf").trim();
-      if (!outputName.toLowerCase().endsWith(".pdf")) {
-        mergeStatus.setStatus("Output name must end with .pdf", "error");
-        return;
-      }
+      const trimmed = (outputName || preferences.defaultOutputName || "merged.pdf").trim();
+      const safeName = trimmed.toLowerCase().endsWith(".pdf") ? trimmed : `${trimmed}.pdf`;
       mergeStatus.setStatus("Merge in progress. Please wait…", "progress");
       try {
-        const response = await postMerge(entries, outputName);
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({ error: "Merge failed" }));
-          throw new Error(payload.error || "Merge failed");
+        const result = await withLoader(() => postMerge(entries, safeName));
+        const blob = base64ToBlob(result.pdf_base64, "application/pdf");
+        const filename = result.filename || safeName;
+        if (preferences.autoDownload) {
+          downloadBlob(blob, filename);
+          setLastMerged(null);
+          mergeStatus.setStatus(`Merged PDF saved as ${filename}`, "success");
+        } else {
+          setLastMerged({ blob, filename });
+          mergeStatus.setStatus(`Merged PDF ready: ${filename}`, "success");
         }
-        const blob = await response.blob();
-        const disposition = response.headers.get("Content-Disposition") || "";
-        const match = /filename="?([^";]+)"?/i.exec(disposition);
-        const filename = match ? match[1] : outputName;
-        downloadBlob(blob, filename);
-        mergeStatus.setStatus(`Merged PDF saved as ${filename}`, "success");
       } catch (error) {
         mergeStatus.setStatus(error instanceof Error ? error.message : "Merge failed", "error");
       }
     },
-    [entries, mergeStatus],
+    [entries, mergeStatus, outputName, preferences.autoDownload, preferences.defaultOutputName, withLoader],
   );
 
   const onSplitDrop = useCallback(
@@ -303,14 +374,14 @@ export default function PdfToolsPage({ props }: { props: Record<string, unknown>
       }
       splitStatus.setStatus("Splitting PDF pages. Please wait…", "progress");
       try {
-        const pages = await postSplit(splitFile);
+        const pages = await withLoader(() => postSplit(splitFile));
         setSplitPages(pages);
         splitStatus.setStatus(`Pages ready to download (${pages.length})`, "success");
       } catch (error) {
         splitStatus.setStatus(error instanceof Error ? error.message : "Split failed", "error");
       }
     },
-    [splitFile, splitStatus],
+    [splitFile, splitStatus, withLoader],
   );
 
   return (
@@ -334,6 +405,9 @@ export default function PdfToolsPage({ props }: { props: Record<string, unknown>
             <li>Instant downloads without server persistence</li>
           </ul>
           <div className="tool-shell__actions">
+            <button className="btn btn--ghost" type="button" onClick={() => setSettingsOpen(true)}>
+              ⚙️ Settings
+            </button>
             <a className="btn btn--subtle" data-keep-theme href={typeof helpHref === "string" ? helpHref : "/help/pdf_tools"}>
               Read PDF guide
             </a>
@@ -359,11 +433,23 @@ export default function PdfToolsPage({ props }: { props: Record<string, unknown>
               <div className="merge-output">
                 <label className="form-field__label" htmlFor="merge-output">
                   Output filename
-                  <button type="button" className="tooltip-trigger" aria-label="Output filename help" data-tooltip="Use .pdf extension. Default name is merged.pdf.">
+                  <button
+                    type="button"
+                    className="tooltip-trigger"
+                    aria-label="Output filename help"
+                    data-tooltip={`Use .pdf extension. Default name is ${preferences.defaultOutputName}.`}
+                  >
                     ?
                   </button>
                 </label>
-                <input id="merge-output" type="text" defaultValue="merged.pdf" autoComplete="off" />
+                <input
+                  id="merge-output"
+                  type="text"
+                  value={outputName}
+                  onChange={(event) => setOutputName(event.target.value)}
+                  placeholder={preferences.defaultOutputName}
+                  autoComplete="off"
+                />
               </div>
             </header>
 
@@ -443,13 +529,24 @@ export default function PdfToolsPage({ props }: { props: Record<string, unknown>
                     <div className="merge-entry__content">
                       <div
                         className="merge-entry__details"
-                        data-state={entry.metadata === undefined ? "loading" : entry.metadata ? "ready" : "error"}
+                        data-state={
+                          !preferences.fetchMetadata
+                            ? "disabled"
+                            : entry.metadata === undefined
+                              ? "loading"
+                              : entry.metadata
+                                ? "ready"
+                                : "error"
+                        }
                         aria-live="polite"
                       >
-                        {entry.metadata === undefined && (
+                        {!preferences.fetchMetadata ? (
+                          <p className="merge-entry__details-text">Metadata fetching disabled in settings.</p>
+                        ) : null}
+                        {preferences.fetchMetadata && entry.metadata === undefined && (
                           <p className="merge-entry__details-text">Reading PDF metadata…</p>
                         )}
-                        {entry.metadata && (
+                        {preferences.fetchMetadata && entry.metadata && (
                           <dl className="merge-entry__meta-grid">
                             <div>
                               <dt>Pages</dt>
@@ -461,7 +558,7 @@ export default function PdfToolsPage({ props }: { props: Record<string, unknown>
                             </div>
                           </dl>
                         )}
-                        {entry.metadata === null && (
+                        {preferences.fetchMetadata && entry.metadata === null && (
                           <p className="merge-entry__details-text">
                             Unable to read PDF details. The file may be encrypted.
                           </p>
@@ -490,6 +587,23 @@ export default function PdfToolsPage({ props }: { props: Record<string, unknown>
               ))}
             </div>
             <StatusMessage status={mergeStatus.status} />
+            {lastMerged ? (
+              <div className="surface-muted merge-result" aria-live="polite">
+                <p>
+                  Ready to download: <strong>{lastMerged.filename}</strong>
+                </p>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => {
+                    downloadBlob(lastMerged.blob, lastMerged.filename);
+                    setLastMerged(null);
+                  }}
+                >
+                  Download merged PDF
+                </button>
+              </div>
+            ) : null}
             <div className="form-actions merge-actions">
               <button className="btn" type="submit">
                 Merge selected
@@ -551,6 +665,20 @@ export default function PdfToolsPage({ props }: { props: Record<string, unknown>
           </section>
         </div>
       </div>
+      <SettingsModal
+        isOpen={settingsOpen}
+        title="PDF toolkit preferences"
+        description="Configure default filenames, download behaviour, and metadata analysis."
+        fields={settingsFields}
+        values={preferences}
+        onChange={(key, value) =>
+          updateSetting(key as keyof PdfToolPreferences, value as PdfToolPreferences[keyof PdfToolPreferences])
+        }
+        onReset={() => {
+          resetSettings();
+        }}
+        onClose={() => setSettingsOpen(false)}
+      />
     </section>
   );
 }

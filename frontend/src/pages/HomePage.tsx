@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import type { PluginManifest } from "../types";
 import { useAppContext } from "../contexts/AppContext";
 
@@ -13,17 +14,16 @@ function normaliseCategory(category?: string | null) {
   return category?.trim() || "Tools";
 }
 
-export default function HomePage({ props }: { props: Record<string, unknown> }) {
+export default function HomePage() {
   const { manifests } = useAppContext();
-  const initialPlugins = (props.plugins as PluginManifest[]) || manifests;
   const plugins = useMemo(
     () =>
-      initialPlugins.map((plugin) => ({
+      manifests.map((plugin) => ({
         ...plugin,
         category: normaliseCategory(plugin.category),
         tags: plugin.tags || [],
       })),
-    [initialPlugins],
+    [manifests],
   );
 
   const categories = useMemo(() => {
@@ -176,9 +176,20 @@ export default function HomePage({ props }: { props: Record<string, unknown> }) 
                     <div>
                       <dt>Launch</dt>
                       <dd>
-                        <a className="btn btn--subtle" data-tool-preview-launch data-keep-theme href={preview ? `/${preview.blueprint}/` : "#"}>
-                          Open tool
-                        </a>
+                        {preview ? (
+                          <Link
+                            className="btn btn--subtle"
+                            data-tool-preview-launch
+                            data-keep-theme
+                            to={`/tools/${preview.blueprint}`}
+                          >
+                            Open tool
+                          </Link>
+                        ) : (
+                          <button className="btn btn--subtle" type="button" disabled>
+                            Open tool
+                          </button>
+                        )}
                       </dd>
                     </div>
                     <div>
@@ -224,7 +235,7 @@ export default function HomePage({ props }: { props: Record<string, unknown> }) 
                         data-tool-category={plugin.category}
                         data-tool-summary={plugin.summary}
                         data-tool-tags={(plugin.tags || []).join(" ")}
-                        data-tool-launch={`/${plugin.blueprint}/`}
+                        data-tool-launch={`/tools/${plugin.blueprint}`}
                         data-tool-docs={plugin.docs || undefined}
                       >
                         <div className="tool-card__icon" aria-hidden="true" style={{ ["--icon-hue" as string]: `${hue}` }}>
@@ -236,9 +247,9 @@ export default function HomePage({ props }: { props: Record<string, unknown> }) 
                         <h3 className="tool-card__title">{plugin.title}</h3>
                         <p className="tool-card__summary">{plugin.summary}</p>
                         <div className="tool-card__actions">
-                          <a className="btn" data-keep-theme href={`/${plugin.blueprint}/`}>
+                          <Link className="btn" data-keep-theme to={`/tools/${plugin.blueprint}`}>
                             Launch tool
-                          </a>
+                          </Link>
                           {plugin.docs ? (
                             <a className="btn btn--subtle" data-keep-theme href={plugin.docs}>
                               Read guide

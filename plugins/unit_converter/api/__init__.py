@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from flask import Blueprint, Response, current_app, render_template, request, url_for
+from flask import Blueprint, Response, request
 
 from common.errors import ValidationAppError
 from common.responses import fail, ok
@@ -39,58 +39,7 @@ class ExpressionPayload(PrecisionPayload):
     target: str | None = None
 
 
-ui_bp = Blueprint(
-    "unit_converter",
-    __name__,
-    url_prefix="/unit_converter",
-    template_folder="../ui/templates",
-    static_folder="../ui/static",
-    static_url_path="/static",
-)
-
-
-@ui_bp.get("/")
-def index() -> str:
-    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("unit_converter", {})
-    families = list_families()
-    units = {family: list_units(family) for family in families}
-    renderer = current_app.extensions.get("render_react")
-    if not renderer:
-        return render_template(
-            "unit_converter/index.html",
-            families=families,
-            units=units,
-            plugin_settings=settings,
-        )
-
-    theme_state = current_app.extensions.get("theme_state")
-    apply_theme = current_app.extensions.get("theme_url")
-    _, _, current_theme = (
-        theme_state() if callable(theme_state) else ({}, "midnight", "midnight")
-    )
-    theme_apply = (
-        apply_theme if callable(apply_theme) else (lambda value, _theme: value)
-    )
-    docs_url = settings.get("docs")
-    if docs_url:
-        help_href = theme_apply(docs_url, current_theme)
-    else:
-        help_href = theme_apply(
-            url_for("help_page", slug="unit_converter"), current_theme
-        )
-
-    props = {
-        "families": families,
-        "units": units,
-        "helpHref": help_href,
-    }
-    return renderer("unit_converter", props)
-
-
 api_bp = Blueprint("unit_converter_api", __name__, url_prefix="/api/unit_converter")
-legacy_bp = Blueprint(
-    "unit_converter_legacy", __name__, url_prefix="/unit_converter/api/v1"
-)
 
 
 @api_bp.get("/families")
@@ -181,27 +130,7 @@ def expression_endpoint() -> Response:
     return ok(result)
 
 
-@legacy_bp.get("/families")
-def legacy_families() -> Response:
-    return families()
-
-
-@legacy_bp.get("/units/<family>")
-def legacy_units(family: str) -> Response:
-    return units_endpoint(family)
-
-
-@legacy_bp.post("/convert")
-def legacy_convert() -> Response:
-    return convert_endpoint()
-
-
-@legacy_bp.post("/expressions")
-def legacy_expressions() -> Response:
-    return expression_endpoint()
-
-
-blueprints = [ui_bp, api_bp, legacy_bp]
+blueprints = [api_bp]
 
 
 __all__ = [
@@ -210,5 +139,4 @@ __all__ = [
     "units_endpoint",
     "convert_endpoint",
     "expression_endpoint",
-    "index",
 ]
