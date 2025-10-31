@@ -7,7 +7,6 @@ from typing import Iterable
 
 from pint import UnitRegistry
 
-
 _CUSTOM_DEFINITIONS: tuple[str, ...] = (
     "angstrom = 1e-10 * meter = Å = angstrom = angstroem",
     "micron = 1e-6 * meter = micrometer = µm",

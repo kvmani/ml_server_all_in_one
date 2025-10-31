@@ -6,10 +6,12 @@ from plugins.hydride_segmentation.core import ConventionalParams, segment_conven
 def test_segment_conventional_detects_circle():
     image = np.ones((64, 64), dtype=np.uint8) * 255
     rr, cc = np.ogrid[:64, :64]
-    mask = (rr - 32) ** 2 + (cc - 32) ** 2 <= 10 ** 2
+    mask = (rr - 32) ** 2 + (cc - 32) ** 2 <= 10**2
     image[mask] = 10
 
-    params = ConventionalParams(adaptive_window=15, morph_kernel=(3, 3), area_threshold=5)
+    params = ConventionalParams(
+        adaptive_window=15, morph_kernel=(3, 3), area_threshold=5
+    )
     result = segment_conventional(image, params)
     assert result.mask.sum() > 0
     assert result.overlay.shape == (64, 64, 3)

@@ -17,7 +17,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 
-def orientation_analysis(mask: np.ndarray) -> Tuple[Image.Image, Image.Image, Image.Image]:
+def orientation_analysis(
+    mask: np.ndarray,
+) -> Tuple[Image.Image, Image.Image, Image.Image]:
     labels = measure.label(mask > 0)
     orientations = []
     sizes = []
@@ -45,14 +47,20 @@ def orientation_analysis(mask: np.ndarray) -> Tuple[Image.Image, Image.Image, Im
         rgb[labels == i] = cmap(angle / 90)[:3]
 
     orient_img = _fig_to_image(_plot_orientation_map(rgb))
-    size_img = _fig_to_image(_plot_histogram(sizes, "Hydride Size Distribution", "Hydride Size (pixels)"))
-    angle_img = _fig_to_image(_plot_histogram(orientations, "Hydride Orientation Distribution", "Orientation (deg)"))
+    size_img = _fig_to_image(
+        _plot_histogram(sizes, "Hydride Size Distribution", "Hydride Size (pixels)")
+    )
+    angle_img = _fig_to_image(
+        _plot_histogram(
+            orientations, "Hydride Orientation Distribution", "Orientation (deg)"
+        )
+    )
     return orient_img, size_img, angle_img
 
 
 def _plot_orientation_map(rgb: np.ndarray):
     fig, ax = plt.subplots()
-    im = ax.imshow(rgb)
+    ax.imshow(rgb)
     ax.axis("off")
     norm = plt.Normalize(0, 90)
     sm = plt.cm.ScalarMappable(cmap="coolwarm", norm=norm)

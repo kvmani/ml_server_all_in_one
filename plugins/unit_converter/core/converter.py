@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
 import math
 import re
-from typing import Dict, Iterable, List, Optional
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation, localcontext
+from typing import Dict, List, Optional
 
 from pint import Quantity
 from pint.errors import DimensionalityError, UndefinedUnitError
@@ -209,7 +209,9 @@ class Converter:
         target_unit = self._sanitize_unit(to_unit)
         quantity = self._create_quantity(numeric_value, source_unit, mode)
         try:
-            converted = self._convert_quantity(quantity, self._adjust_for_mode(target_unit, mode))
+            converted = self._convert_quantity(
+                quantity, self._adjust_for_mode(target_unit, mode)
+            )
         except UndefinedUnitError as exc:  # pragma: no cover - defensive
             raise InvalidUnitError(str(exc)) from exc
         except DimensionalityError as exc:
@@ -224,12 +226,16 @@ class Converter:
             },
         }
 
-    def convert_expression(self, expression: str, target: Optional[str] = None) -> Dict[str, object]:
+    def convert_expression(
+        self, expression: str, target: Optional[str] = None
+    ) -> Dict[str, object]:
         clean_expression, inferred_target = self._split_expression(expression)
         if target is None:
             target = inferred_target
         if not target:
-            raise BadInputError("Expression must include a 'to <unit>' clause or explicit target.")
+            raise BadInputError(
+                "Expression must include a 'to <unit>' clause or explicit target."
+            )
         sanitized_target = self._sanitize_unit(target)
         try:
             quantity = self.registry.parse_expression(clean_expression)
@@ -328,19 +334,31 @@ class Converter:
                 return custom
             raise
 
-    def _custom_conversion(self, quantity: Quantity, target_unit: str) -> Optional[Quantity]:
+    def _custom_conversion(
+        self, quantity: Quantity, target_unit: str
+    ) -> Optional[Quantity]:
         src_units = str(quantity.units)
-        if "mole" in src_units and ("electron_volt" in target_unit or "eV" in target_unit):
+        if "mole" in src_units and (
+            "electron_volt" in target_unit or "eV" in target_unit
+        ):
             base = quantity.to("joule / mole")
             joule_per_particle = base.magnitude / AVOGADRO
-            electron_volt_joule = self.registry.Quantity(1, "electron_volt").to("joule").magnitude
+            electron_volt_joule = (
+                self.registry.Quantity(1, "electron_volt").to("joule").magnitude
+            )
             ev_value = joule_per_particle / electron_volt_joule
             return self.registry.Quantity(ev_value, "electron_volt").to(target_unit)
-        if ("electron_volt" in src_units or "eV" in src_units) and "mole" in target_unit:
+        if (
+            "electron_volt" in src_units or "eV" in src_units
+        ) and "mole" in target_unit:
             energy_ev = quantity.to("electron_volt")
-            electron_volt_joule = self.registry.Quantity(1, "electron_volt").to("joule").magnitude
+            electron_volt_joule = (
+                self.registry.Quantity(1, "electron_volt").to("joule").magnitude
+            )
             joule_per_mole = energy_ev.magnitude * electron_volt_joule * AVOGADRO
-            return self.registry.Quantity(joule_per_mole, "joule / mole").to(target_unit)
+            return self.registry.Quantity(joule_per_mole, "joule / mole").to(
+                target_unit
+            )
         return None
 
 
@@ -365,7 +383,7 @@ def format_value(
         if value == 0:
             return "0"
         exponent = int(math.floor(math.log10(abs(value)) / 3) * 3)
-        scaled = value / (10 ** exponent)
+        scaled = value / (10**exponent)
         precision = sig_figs - 1 if sig_figs else 6
         formatted = f"{scaled:.{max(0, precision)}f}"
         formatted = formatted.rstrip("0").rstrip(".")
@@ -386,10 +404,18 @@ def _format_sig_figs(value: float, sig_figs: int) -> str:
         ctx.rounding = ROUND_HALF_UP
         ctx.prec = sig_figs + 2
         decimal_value = Decimal(str(value))
-        rounded = decimal_value.scaleb(digits).to_integral_value(rounding=ROUND_HALF_UP).scaleb(-digits)
+        rounded = (
+            decimal_value.scaleb(digits)
+            .to_integral_value(rounding=ROUND_HALF_UP)
+            .scaleb(-digits)
+        )
     if -4 <= magnitude < sig_figs:
         fmt_digits = max(digits, 0)
-        return f"{float(rounded):.{fmt_digits}f}" if fmt_digits > 0 else f"{float(rounded):.0f}"
+        return (
+            f"{float(rounded):.{fmt_digits}f}"
+            if fmt_digits > 0
+            else f"{float(rounded):.0f}"
+        )
     return f"{float(rounded):.{sig_figs - 1}e}"
 
 

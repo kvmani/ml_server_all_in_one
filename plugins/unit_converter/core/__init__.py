@@ -11,7 +11,6 @@ from .converter import (
     Converter,
     DimensionMismatchError,
     InvalidUnitError,
-    UNIT_FAMILIES,
     format_value,
 )
 

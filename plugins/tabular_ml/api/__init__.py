@@ -1,11 +1,15 @@
+"""Tabular ML plugin API with standardized responses."""
+
 from __future__ import annotations
 
-from io import BytesIO
+import base64
+from typing import Any
 
-from flask import Blueprint, Response, current_app, jsonify, render_template, request, send_file, url_for
+from flask import Blueprint, Response, current_app, render_template, request, url_for
 
-from app.security import validate_mime
-from common.validate import FileLimit, ValidationError, enforce_limits
+from common.errors import ValidationAppError
+from common.responses import fail, ok
+from common.validation import FileLimit, ValidationError, enforce_limits, validate_mime
 
 from ..core import (
     BatchPredictionResult,
@@ -30,8 +34,7 @@ from ..core import (
     train_on_dataset,
 )
 
-
-bp = Blueprint(
+ui_bp = Blueprint(
     "tabular_ml",
     __name__,
     url_prefix="/tabular_ml",
@@ -57,22 +60,22 @@ def _upload_limits() -> FileLimit:
     return FileLimit(max_files=max_files_int or 1, max_size=max_bytes)
 
 
-@bp.get("/")
+@ui_bp.get("/")
 def index() -> str:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("tabular_ml", {})
     renderer = current_app.extensions.get("render_react")
-    # Allow forcing the server-rendered interface even when the React renderer is
-    # registered. This keeps the richer HTML/JS experience accessible in
-    # environments where the React bundle is unavailable or when documentation
-    # explicitly references the classic UI.
     force_classic = request.args.get("ui") == "classic"
     if not renderer or force_classic:
         return render_template("tabular_ml/index.html", plugin_settings=settings)
 
     theme_state = current_app.extensions.get("theme_state")
     apply_theme = current_app.extensions.get("theme_url")
-    _, _, current_theme = theme_state() if callable(theme_state) else ({}, "midnight", "midnight")
-    theme_apply = apply_theme if callable(apply_theme) else (lambda value, _theme: value)
+    _, _, current_theme = (
+        theme_state() if callable(theme_state) else ({}, "midnight", "midnight")
+    )
+    theme_apply = (
+        apply_theme if callable(apply_theme) else (lambda value, _theme: value)
+    )
 
     docs_url = settings.get("docs")
     if docs_url:
@@ -87,32 +90,81 @@ def index() -> str:
     return renderer("tabular_ml", props)
 
 
-@bp.post("/api/v1/datasets")
+api_bp = Blueprint("tabular_ml_api", __name__, url_prefix="/api/tabular_ml")
+legacy_bp = Blueprint("tabular_ml_legacy", __name__, url_prefix="/tabular_ml/api/v1")
+
+
+def _profile_payload(profile: DatasetProfile) -> dict[str, Any]:
+    return {
+        "dataset_id": profile.dataset_id,
+        "columns": profile.columns,
+        "preview": profile.preview,
+        "shape": profile.shape,
+        "stats": profile.stats,
+        "numeric_columns": profile.numeric_columns,
+    }
+
+
+def _batch_payload(result: BatchPredictionResult) -> dict[str, Any]:
+    return {
+        "columns": result.columns,
+        "preview": result.preview,
+        "rows": result.row_count,
+    }
+
+
+def _ok_or_error(callable_, *, code: str, status: int | None = None):
+    try:
+        return callable_()
+    except ModelNotReadyError as exc:
+        return fail(
+            ValidationAppError(
+                message=str(exc), code=f"{code}.not_ready", status_code=status or 404
+            )
+        )
+    except TabularError as exc:
+        return fail(
+            ValidationAppError(
+                message=str(exc), code=f"{code}.invalid", status_code=status or 400
+            )
+        )
+
+
+@api_bp.post("/datasets")
 def create_dataset() -> Response:
     file = request.files.get("dataset")
     if not file:
-        return jsonify({"error": "Dataset file is required"}), 400
+        return fail(
+            ValidationAppError(
+                message="Dataset file is required", code="tabular.dataset_missing"
+            )
+        )
     try:
         enforce_limits([file], _upload_limits())
         validate_mime([file], {"text/csv", "application/vnd.ms-excel"})
-    except (ValidationError, ValueError) as exc:
-        return jsonify({"error": str(exc)}), 400
+    except ValidationError as exc:
+        return fail(
+            ValidationAppError(
+                message=str(exc),
+                code="tabular.invalid_upload",
+                details=getattr(exc, "details", None),
+            )
+        )
 
-    try:
+    def _register():
         profile = register_dataset(file.read())
-    except TabularError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return ok(_profile_payload(profile))
 
-    return jsonify(_profile_payload(profile))
+    return _ok_or_error(_register, code="tabular.dataset")
 
 
-@bp.delete("/api/v1/datasets/<dataset_id>")
+@api_bp.delete("/datasets/<dataset_id>")
 def delete_dataset(dataset_id: str) -> Response:
     drop_dataset(dataset_id)
-    return jsonify({"status": "deleted"})
+    return ok({"status": "deleted"})
 
 
-@bp.post("/api/v1/datasets/<dataset_id>/scatter")
+@api_bp.post("/datasets/<dataset_id>/scatter")
 def scatter(dataset_id: str) -> Response:
     payload = request.get_json(silent=True) or {}
     x = payload.get("x")
@@ -120,32 +172,55 @@ def scatter(dataset_id: str) -> Response:
     color = payload.get("color")
     max_points = payload.get("max_points", 400)
     if not x or not y:
-        return jsonify({"error": "Scatter plot requires x and y columns"}), 400
-    try:
-        result = scatter_points(dataset_id, x, y, color=color, max_points=int(max_points))
-    except (TabularError, ValueError) as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify(result)
+        return fail(
+            ValidationAppError(
+                message="Scatter plot requires x and y columns",
+                code="tabular.scatter.invalid",
+            )
+        )
+
+    def _scatter():
+        result = scatter_points(
+            dataset_id, x, y, color=color, max_points=int(max_points)
+        )
+        return ok(result)
+
+    return _ok_or_error(_scatter, code="tabular.scatter")
 
 
-@bp.post("/api/v1/datasets/<dataset_id>/histogram")
+@api_bp.post("/datasets/<dataset_id>/histogram")
 def histogram(dataset_id: str) -> Response:
     payload = request.get_json(silent=True) or {}
     column = payload.get("column")
     if not column:
-        return jsonify({"error": "Histogram column is required"}), 400
+        return fail(
+            ValidationAppError(
+                message="Histogram column is required", code="tabular.histogram.invalid"
+            )
+        )
     bins = payload.get("bins", 30)
     density = bool(payload.get("density", False))
     range_payload = payload.get("range")
     value_range = None
     if range_payload is not None:
         if not isinstance(range_payload, (list, tuple)) or len(range_payload) != 2:
-            return jsonify({"error": "Histogram range must contain [min, max]"}), 400
+            return fail(
+                ValidationAppError(
+                    message="Histogram range must contain [min, max]",
+                    code="tabular.histogram.range",
+                )
+            )
         try:
             value_range = (float(range_payload[0]), float(range_payload[1]))
         except (TypeError, ValueError):
-            return jsonify({"error": "Histogram range must contain numeric values"}), 400
-    try:
+            return fail(
+                ValidationAppError(
+                    message="Histogram range must contain numeric values",
+                    code="tabular.histogram.range",
+                )
+            )
+
+    def _histogram():
         result = histogram_points(
             dataset_id,
             column,
@@ -153,34 +228,45 @@ def histogram(dataset_id: str) -> Response:
             density=density,
             value_range=value_range,
         )
-    except (TabularError, ValueError) as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify(result)
+        return ok(result)
+
+    return _ok_or_error(_histogram, code="tabular.histogram")
 
 
-@bp.post("/api/v1/datasets/<dataset_id>/train")
+@api_bp.post("/datasets/<dataset_id>/train")
 def train(dataset_id: str) -> Response:
     payload = request.get_json(silent=True) or {}
     target = payload.get("target")
     if not target:
-        return jsonify({"error": "Target column is required"}), 400
+        return fail(
+            ValidationAppError(
+                message="Target column is required", code="tabular.train.target"
+            )
+        )
     algorithm = payload.get("algorithm", "auto")
     if not isinstance(algorithm, str):
-        return jsonify({"error": "Algorithm must be a string"}), 400
+        return fail(
+            ValidationAppError(
+                message="Algorithm must be a string", code="tabular.train.algorithm"
+            )
+        )
     hyperparameters = payload.get("hyperparameters")
     if hyperparameters is not None and not isinstance(hyperparameters, dict):
-        return jsonify({"error": "Hyperparameters must be provided as an object"}), 400
-    try:
+        return fail(
+            ValidationAppError(
+                message="Hyperparameters must be provided as an object",
+                code="tabular.train.hyperparameters",
+            )
+        )
+
+    def _train():
         result = train_on_dataset(
             dataset_id,
             target,
             algorithm=algorithm,
             hyperparameters=hyperparameters,
         )
-    except TabularError as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify(
-        {
+        payload = {
             "task": result.task,
             "algorithm": result.algorithm,
             "algorithm_label": result.algorithm_label,
@@ -192,175 +278,291 @@ def train(dataset_id: str) -> Response:
             "feature_columns": result.feature_columns,
             "target": result.target_column,
         }
-    )
+        return ok(payload)
+
+    return _ok_or_error(_train, code="tabular.train")
 
 
-@bp.post("/api/v1/datasets/<dataset_id>/preprocess/outliers/detect")
+@api_bp.post("/datasets/<dataset_id>/preprocess/outliers/detect")
 def detect_outliers_endpoint(dataset_id: str) -> Response:
     payload = request.get_json(silent=True) or {}
     columns = payload.get("columns")
     if columns is not None and not isinstance(columns, list):
-        return jsonify({"error": "Columns must be provided as a list"}), 400
+        return fail(
+            ValidationAppError(
+                message="Columns must be provided as a list",
+                code="tabular.outliers.columns",
+            )
+        )
     threshold = payload.get("threshold", 3.0)
     try:
         threshold_value = float(threshold)
     except (TypeError, ValueError):
-        return jsonify({"error": "Threshold must be numeric"}), 400
-    try:
+        return fail(
+            ValidationAppError(
+                message="Threshold must be numeric", code="tabular.outliers.threshold"
+            )
+        )
+
+    def _detect():
         report = detect_outliers(dataset_id, columns=columns, threshold=threshold_value)
-    except TabularError as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify(
-        {
+        payload = {
             "method": report.method,
             "threshold": report.threshold,
             "total_outliers": report.total_outliers,
             "inspected_columns": report.inspected_columns,
             "sample_indices": report.sample_indices,
         }
-    )
+        return ok(payload)
+
+    return _ok_or_error(_detect, code="tabular.outliers")
 
 
-@bp.post("/api/v1/datasets/<dataset_id>/preprocess/outliers/remove")
+@api_bp.post("/datasets/<dataset_id>/preprocess/outliers/remove")
 def remove_outliers_endpoint(dataset_id: str) -> Response:
     payload = request.get_json(silent=True) or {}
     columns = payload.get("columns")
     if columns is not None and not isinstance(columns, list):
-        return jsonify({"error": "Columns must be provided as a list"}), 400
+        return fail(
+            ValidationAppError(
+                message="Columns must be provided as a list",
+                code="tabular.outliers.columns",
+            )
+        )
     threshold = payload.get("threshold", 3.0)
     try:
         threshold_value = float(threshold)
     except (TypeError, ValueError):
-        return jsonify({"error": "Threshold must be numeric"}), 400
-    try:
-        profile = remove_outliers(dataset_id, columns=columns, threshold=threshold_value)
-    except TabularError as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify({**_profile_payload(profile), "threshold": threshold_value})
+        return fail(
+            ValidationAppError(
+                message="Threshold must be numeric", code="tabular.outliers.threshold"
+            )
+        )
+
+    def _remove():
+        profile = remove_outliers(
+            dataset_id, columns=columns, threshold=threshold_value
+        )
+        data = {**_profile_payload(profile), "threshold": threshold_value}
+        return ok(data)
+
+    return _ok_or_error(_remove, code="tabular.outliers")
 
 
-@bp.post("/api/v1/datasets/<dataset_id>/preprocess/filter")
+@api_bp.post("/datasets/<dataset_id>/preprocess/filter")
 def apply_filters_endpoint(dataset_id: str) -> Response:
     payload = request.get_json(silent=True) or {}
     rules = payload.get("rules")
     if not isinstance(rules, list):
-        return jsonify({"error": "Rules must be provided as a list"}), 400
-    try:
+        return fail(
+            ValidationAppError(
+                message="Rules must be provided as a list", code="tabular.filter.rules"
+            )
+        )
+
+    def _apply():
         profile, removed = filter_rows(dataset_id, rules)
-    except TabularError as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify({**_profile_payload(profile), "rows_removed": removed})
+        return ok({**_profile_payload(profile), "rows_removed": removed})
+
+    return _ok_or_error(_apply, code="tabular.filter")
 
 
-@bp.post("/api/v1/datasets/<dataset_id>/predict")
+@api_bp.post("/datasets/<dataset_id>/predict")
 def predict(dataset_id: str) -> Response:
     payload = request.get_json(silent=True) or {}
     features = payload.get("features")
     if not isinstance(features, dict):
-        return jsonify({"error": "Features must be provided as an object"}), 400
-    try:
+        return fail(
+            ValidationAppError(
+                message="Features must be provided as an object",
+                code="tabular.predict.features",
+            )
+        )
+
+    def _predict():
         result = predict_single(dataset_id, features)
-    except ModelNotReadyError as exc:
-        return jsonify({"error": str(exc)}), 404
-    except TabularError as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify(result)
+        return ok(result)
+
+    return _ok_or_error(_predict, code="tabular.predict")
 
 
-@bp.post("/api/v1/datasets/<dataset_id>/predict/batch")
+@api_bp.post("/datasets/<dataset_id>/predict/batch")
 def predict_batch_endpoint(dataset_id: str) -> Response:
     file = request.files.get("dataset")
     if not file:
-        return jsonify({"error": "Batch CSV file is required"}), 400
+        return fail(
+            ValidationAppError(
+                message="Batch CSV file is required", code="tabular.batch.missing"
+            )
+        )
     try:
         enforce_limits([file], _upload_limits())
         validate_mime([file], {"text/csv", "application/vnd.ms-excel"})
-    except (ValidationError, ValueError) as exc:
-        return jsonify({"error": str(exc)}), 400
-    try:
+    except ValidationError as exc:
+        return fail(
+            ValidationAppError(
+                message=str(exc),
+                code="tabular.invalid_upload",
+                details=getattr(exc, "details", None),
+            )
+        )
+
+    def _predict_batch():
         batch_result = predict_batch(dataset_id, file.read())
-    except ModelNotReadyError as exc:
-        return jsonify({"error": str(exc)}), 404
-    except TabularError as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify(_batch_payload(batch_result))
+        return ok(_batch_payload(batch_result))
+
+    return _ok_or_error(_predict_batch, code="tabular.batch")
 
 
-@bp.get("/api/v1/datasets/<dataset_id>/predict/batch")
+def _file_response(filename: str, content: bytes) -> Response:
+    payload = {
+        "filename": filename,
+        "content_base64": base64.b64encode(content).decode("ascii"),
+        "size_bytes": len(content),
+    }
+    return ok(payload)
+
+
+@api_bp.get("/datasets/<dataset_id>/predict/batch")
 def download_batch_predictions(dataset_id: str) -> Response:
     fmt = (request.args.get("format") or "csv").lower()
     if fmt != "csv":
-        return jsonify({"error": "Only CSV export is supported"}), 400
-    try:
+        return fail(
+            ValidationAppError(
+                message="Only CSV export is supported", code="tabular.batch.export"
+            )
+        )
+
+    def _download():
         csv_bytes = export_batch_predictions_csv(dataset_id)
-    except ModelNotReadyError as exc:
-        return jsonify({"error": str(exc)}), 404
-    except TabularError as exc:
-        return jsonify({"error": str(exc)}), 400
-    buffer = BytesIO(csv_bytes)
-    buffer.seek(0)
-    filename = f"{dataset_id[:8]}_batch_predictions.csv"
-    return send_file(
-        buffer,
-        mimetype="text/csv",
-        as_attachment=True,
-        download_name=filename,
-        max_age=0,
-    )
+        filename = f"{dataset_id[:8]}_batch_predictions.csv"
+        return _file_response(filename, csv_bytes)
+
+    return _ok_or_error(_download, code="tabular.batch")
 
 
-@bp.get("/api/v1/datasets/<dataset_id>/predictions")
+@api_bp.get("/datasets/<dataset_id>/predictions")
 def predictions(dataset_id: str) -> Response:
     result = latest_result(dataset_id)
     if not result:
-        return jsonify({"error": "Train a model before exporting predictions"}), 404
+        return fail(
+            ValidationAppError(
+                message="Train a model before exporting predictions",
+                code="tabular.predict.not_ready",
+                status_code=404,
+            )
+        )
 
     fmt = (request.args.get("format") or "json").lower()
     if fmt == "csv":
         csv_bytes = export_predictions_csv(result)
-        buffer = BytesIO(csv_bytes)
-        buffer.seek(0)
         filename = f"{dataset_id[:8]}_predictions.csv"
-        return send_file(
-            buffer,
-            mimetype="text/csv",
-            as_attachment=True,
-            download_name=filename,
-            max_age=0,
-        )
+        return _file_response(filename, csv_bytes)
 
-    return jsonify({"columns": result.evaluation_columns, "rows": result.evaluation})
+    data = {"columns": result.evaluation_columns, "rows": result.evaluation}
+    return ok(data)
 
 
-@bp.get("/api/v1/datasets/<dataset_id>/profile")
+@api_bp.get("/datasets/<dataset_id>/profile")
 def profile(dataset_id: str) -> Response:
-    try:
+    def _profile():
         df = get_dataset(dataset_id)
         profile = build_profile(dataset_id, df)
-    except TabularError as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify(_profile_payload(profile))
+        return ok(_profile_payload(profile))
+
+    return _ok_or_error(_profile, code="tabular.profile")
 
 
-@bp.get("/api/v1/algorithms")
+@api_bp.get("/algorithms")
 def algorithms() -> Response:
-    return jsonify({"algorithms": algorithm_metadata()})
+    return ok({"algorithms": algorithm_metadata()})
 
 
-def _profile_payload(profile: DatasetProfile) -> dict:
-    return {
-        "dataset_id": profile.dataset_id,
-        "columns": profile.columns,
-        "preview": profile.preview,
-        "shape": profile.shape,
-        "stats": profile.stats,
-        "numeric_columns": profile.numeric_columns,
-    }
+@legacy_bp.post("/datasets")
+def legacy_create_dataset() -> Response:
+    return create_dataset()
 
 
-def _batch_payload(result: BatchPredictionResult) -> dict:
-    return {
-        "columns": result.columns,
-        "preview": result.preview,
-        "rows": result.row_count,
-    }
+@legacy_bp.delete("/datasets/<dataset_id>")
+def legacy_delete_dataset(dataset_id: str) -> Response:
+    return delete_dataset(dataset_id)
+
+
+@legacy_bp.post("/datasets/<dataset_id>/scatter")
+def legacy_scatter(dataset_id: str) -> Response:
+    return scatter(dataset_id)
+
+
+@legacy_bp.post("/datasets/<dataset_id>/histogram")
+def legacy_histogram(dataset_id: str) -> Response:
+    return histogram(dataset_id)
+
+
+@legacy_bp.post("/datasets/<dataset_id>/train")
+def legacy_train(dataset_id: str) -> Response:
+    return train(dataset_id)
+
+
+@legacy_bp.post("/datasets/<dataset_id>/preprocess/outliers/detect")
+def legacy_detect_outliers(dataset_id: str) -> Response:
+    return detect_outliers_endpoint(dataset_id)
+
+
+@legacy_bp.post("/datasets/<dataset_id>/preprocess/outliers/remove")
+def legacy_remove_outliers(dataset_id: str) -> Response:
+    return remove_outliers_endpoint(dataset_id)
+
+
+@legacy_bp.post("/datasets/<dataset_id>/preprocess/filter")
+def legacy_filter(dataset_id: str) -> Response:
+    return apply_filters_endpoint(dataset_id)
+
+
+@legacy_bp.post("/datasets/<dataset_id>/predict")
+def legacy_predict(dataset_id: str) -> Response:
+    return predict(dataset_id)
+
+
+@legacy_bp.post("/datasets/<dataset_id>/predict/batch")
+def legacy_predict_batch(dataset_id: str) -> Response:
+    return predict_batch_endpoint(dataset_id)
+
+
+@legacy_bp.get("/datasets/<dataset_id>/predict/batch")
+def legacy_download_batch(dataset_id: str) -> Response:
+    return download_batch_predictions(dataset_id)
+
+
+@legacy_bp.get("/datasets/<dataset_id>/predictions")
+def legacy_predictions(dataset_id: str) -> Response:
+    return predictions(dataset_id)
+
+
+@legacy_bp.get("/datasets/<dataset_id>/profile")
+def legacy_profile(dataset_id: str) -> Response:
+    return profile(dataset_id)
+
+
+@legacy_bp.get("/algorithms")
+def legacy_algorithms() -> Response:
+    return algorithms()
+
+
+blueprints = [ui_bp, api_bp, legacy_bp]
+
+
+__all__ = [
+    "blueprints",
+    "create_dataset",
+    "delete_dataset",
+    "scatter",
+    "histogram",
+    "train",
+    "predict",
+    "predict_batch_endpoint",
+    "download_batch_predictions",
+    "predictions",
+    "profile",
+    "algorithms",
+    "index",
+]

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import importlib
-import pkgutil
 import json
+import pkgutil
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -12,11 +12,17 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import yaml
 from flask import Flask, render_template, request, url_for
 
+from common.errors import AppError, ensure_app_error
+from common.logging import install_request_logging
+from common.responses import fail
+
 from . import config as config_module
 from .blueprints import register_plugin_blueprints
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yml"
-MANIFEST_PATH = Path(__file__).resolve().parent / "ui" / "static" / "react" / "manifest.json"
+MANIFEST_PATH = (
+    Path(__file__).resolve().parent / "ui" / "static" / "react" / "manifest.json"
+)
 
 
 def _append_theme_param(url: str, theme: str, host: str | None = None) -> str:
@@ -32,7 +38,9 @@ def _append_theme_param(url: str, theme: str, host: str | None = None) -> str:
     query = dict(query_pairs)
     query["theme"] = theme
     new_query = urlencode(query, doseq=True)
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, new_query, parsed.fragment))
+    return urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, new_query, parsed.fragment)
+    )
 
 
 def _load_vite_manifest() -> dict:
@@ -117,7 +125,9 @@ def create_app(config_name: str | None = None) -> Flask:
         app.config["SITE_SETTINGS"] = site_settings
         if "max_content_length_mb" in site_settings:
             try:
-                max_bytes = int(float(site_settings["max_content_length_mb"]) * 1024 * 1024)
+                max_bytes = int(
+                    float(site_settings["max_content_length_mb"]) * 1024 * 1024
+                )
                 app.config["MAX_CONTENT_LENGTH"] = max_bytes
             except (TypeError, ValueError):
                 pass
@@ -132,6 +142,7 @@ def create_app(config_name: str | None = None) -> Flask:
             app.config.from_object(config_obj)
 
     register_plugin_blueprints(app)
+    install_request_logging(app)
 
     manifest_data = _load_vite_manifest()
     assets = _resolve_assets(manifest_data)
@@ -178,7 +189,9 @@ def create_app(config_name: str | None = None) -> Flask:
             "manifests": manifests,
             "props": props or {},
         }
-        assets_map = app.extensions.get("react_assets", {"scripts": [], "styles": [], "preload": []})
+        assets_map = app.extensions.get(
+            "react_assets", {"scripts": [], "styles": [], "preload": []}
+        )
         return (
             render_template(
                 "react_app.html",
@@ -259,6 +272,16 @@ def create_app(config_name: str | None = None) -> Flask:
     @app.errorhandler(500)
     def server_error(error):  # pragma: no cover
         return render_template("errors/500.html"), 500
+
+    @app.errorhandler(AppError)
+    def handle_app_error(error: AppError):
+        return fail(error)
+
+    @app.errorhandler(Exception)
+    def handle_generic_error(error: Exception):  # pragma: no cover - integration
+        ensured = ensure_app_error(error, fallback_code="internal.unhandled")
+        response = fail(ensured)
+        return response
 
     return app
 

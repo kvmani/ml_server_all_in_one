@@ -32,7 +32,9 @@ class ConventionalParams:
     crop_percent: int = 10
 
 
-def segment_conventional(image: np.ndarray, params: ConventionalParams) -> SegmentationOutput:
+def segment_conventional(
+    image: np.ndarray, params: ConventionalParams
+) -> SegmentationOutput:
     """Run a CLAHE → adaptive threshold → morphology segmentation pipeline."""
 
     logs: List[str] = []
@@ -61,10 +63,8 @@ def segment_conventional(image: np.ndarray, params: ConventionalParams) -> Segme
         kernel_size=params.clahe_tile_grid,
     )
     clahe_img = util.img_as_ubyte(clahe)
-    logs.append(
-        "Applied CLAHE "
-        f"(clip={params.clahe_clip_limit}, tile={params.clahe_tile_grid[0]}×{params.clahe_tile_grid[1]})"
-    )
+    tile_desc = f"{params.clahe_tile_grid[0]}×{params.clahe_tile_grid[1]}"
+    logs.append("Applied CLAHE " f"(clip={params.clahe_clip_limit}, tile={tile_desc})")
 
     block_size = max(int(params.adaptive_window), 3)
     if block_size % 2 == 0:
@@ -86,7 +86,8 @@ def segment_conventional(image: np.ndarray, params: ConventionalParams) -> Segme
     for _ in range(max(params.morph_iters, 0)):
         mask_bool = morphology.binary_closing(mask_bool, selem)
     logs.append(
-        f"Morphological closing kernel={params.morph_kernel} iterations={params.morph_iters}"
+        "Morphological closing "
+        f"kernel={params.morph_kernel} iterations={params.morph_iters}"
     )
 
     if params.area_threshold > 1:
@@ -94,7 +95,8 @@ def segment_conventional(image: np.ndarray, params: ConventionalParams) -> Segme
         mask_bool = morphology.remove_small_objects(mask_bool, params.area_threshold)
         after = int(mask_bool.sum())
         logs.append(
-            f"Removed components smaller than {params.area_threshold} px (kept {after} of {before})"
+            "Removed components smaller than "
+            f"{params.area_threshold} px (kept {after} of {before})"
         )
 
     cropped_mask = (mask_bool.astype(np.uint8)) * 255
