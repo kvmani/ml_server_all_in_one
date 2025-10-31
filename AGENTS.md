@@ -1,20 +1,23 @@
 # AGENTS.md — Engineering Playbook for **ML Server All‑In‑One (AIO)**
 
-> **MANDATE FOR AGENTS**: Build an **air‑gapped, privacy‑first**, single‑repo web platform that serves ML utilities (Hydride Segmentation, PDF Tools, Unit Converter, Tabular ML, etc.) with **uniform backend + frontend** in one codebase. **No external calls**, **in‑memory processing**, **cross‑browser (Chrome/Firefox/Edge)**, **standards‑only HTML/CSS/JS**. Prefer **Flask** + vanilla JS; keep code **simple, deterministic, and testable**.
+> **MANDATE FOR AGENTS**  
+> Build an **air‑gapped, privacy‑first**, single‑repo web platform that serves ML utilities (Hydride Segmentation, PDF Tools, Unit Converter, Tabular ML, etc.) with a **uniform backend + frontend** in one codebase. **No external calls**, **in‑memory processing**, **cross‑browser (Chrome/Firefox/Edge)**.  
+> **Frontend** has evolved to a **React + Vite** SPA **served by Flask** (hybrid). This **supersedes prior “vanilla‑JS only” guidance**, while keeping the original **offline, vendor‑everything** discipline. Prefer **React** for rich UX (charts, spinners, settings), and keep backend logic **simple, deterministic, and testable**.
 
 ---
 
 ## 0) North Star
 
 - **One repo, many tools**: Each tool is a self‑contained Python package under `plugins/` with
-  - `api/` (Flask blueprint endpoints)
-  - `core/` (pure, unit‑tested logic; no Flask, no disk writes)
-  - `ui/` (templates, static assets, minimal vanilla JS)
-- **Uniform UX**: Common shell (navigation, header/footer, status toasts), consistent CSS tokens, input validation, predictable errors.
-- **Privacy & Security**: No analytics/cookies/localStorage; **no user data persisted to disk**. Use **tmpfs (RAM)** for temporary artifacts and purge before response completes.
-- **Offline‑first**: All assets self‑hosted. Optional React/Plotting libs must be **vendored** under `third_party/` and used sparingly.
-- **Deterministic infra**: Pin Python and tool versions in `environment.yml` + `requirements.txt` mirrored offline.
-- **Cross‑browser compatibility**: Standards‑only; avoid experimental APIs. Provide long‑poll fallback for WS/SSE.
+  - `api/` (Flask blueprint endpoints; JSON in/out; no UI rendering)
+  - `core/` (pure, unit‑tested logic; no Flask, no disk writes; model loads in RAM)
+  - `tests/` (unit + route tests)
+  - **UI now lives in React** (shared SPA), not per‑plugin Jinja templates.
+- **Uniform UX**: Common React shell (navigation, header/footer, status toasts), consistent tokens, input validation, predictable errors.
+- **Privacy & Security**: No analytics/cookies/localStorage for data; **no user artifacts persisted to disk**. Use **tmpfs (RAM)** for transient artifacts and purge before response completes.
+- **Offline‑first**: All assets self‑hosted. Any libs (charts, UI kits) are **bundled** by Vite; no CDNs.
+- **Deterministic infra**: Pin Python/Node deps in `environment.yml`, `requirements.txt`, `package.json` (lockfiles) mirrored offline.
+- **Cross‑browser compatibility**: Standards‑only; avoid experimental APIs. Long‑poll fallback for WS/SSE if used.
 
 ---
 
@@ -23,24 +26,21 @@
 ```
 ml_server_aio/
 ├─ app/                              # Flask app shell
-│  ├─ __init__.py                    # create_app(), global config, plugin discovery
+│  ├─ __init__.py                    # create_app(), config, plugin discovery
 │  ├─ config.py                      # Privacy, limits, tmpfs, CORS=off, CSP strict
 │  ├─ security.py                    # input sanitization, MIME checking helpers
-│  ├─ ui/                            # shared templates and assets
+│  ├─ ui/                            # Flask shell only (serves SPA + error pages)
 │  │  ├─ templates/
-│  │  │  ├─ base.html                # site shell, no external CDNs
-│  │  │  ├─ home.html
+│  │  │  ├─ react_app.html           # single HTML shell bootstrapping React SPA
 │  │  │  └─ errors/{400,413,500}.html
 │  │  └─ static/
-│  │     ├─ css/core.css
-│  │     ├─ js/core.js               # toasts, form helpers, long-poll helper
-│  │     └─ vendor/                  # vendored minimal libs (no CDN)
+│  │     ├─ react/                   # Vite build output (hashed JS/CSS/assets)
+│  │     └─ css/core.css             # minimal base styles (if any legacy UI)
 │  └─ blueprints.py                  # register all plugin blueprints
 ├─ plugins/                          # Each plugin is a Python package
 │  ├─ hydride_segmentation/
-│  │  ├─ api/                        # Flask blueprint (routes only)
+│  │  ├─ api/                        # Flask blueprint (routes only; JSON/file out)
 │  │  ├─ core/                       # pure logic; loads models in RAM
-│  │  ├─ ui/                         # templates/static specific to plugin
 │  │  ├─ tests/
 │  │  └─ __init__.py
 │  ├─ pdf_tools/
@@ -50,148 +50,255 @@ ml_server_aio/
 │  ├─ io_mem.py                      # in-memory file pipes, tmpfs helpers
 │  ├─ validate.py                    # schema & input validation
 │  ├─ tasks.py                       # short-lived in-RAM task runner
-│  └─ imaging.py                     # common image utils (PIL/NumPy)
-├─ third_party/                      # vendored OSS, pinned and offline
-├─ tests/                            # integration tests across plugins
+│  ├─ errors.py                      # AppError + JSON error encoder
+│  ├─ responses.py                   # ok(data), fail(error)
+│  └─ logging.py                     # logger factory w/ request IDs
+├─ frontend/                         # React + Vite SPA (all tool UIs)
+│  ├─ src/{components,features,routes,lib}
+│  ├─ index.html
+│  ├─ package.json
+│  └─ vite.config.ts
+├─ third_party/                      # vendored OSS, pinned and offline (if needed)
+├─ tests/                            # integration/e2e tests across plugins
 ├─ scripts/
-│  ├─ run_dev.py                     # FLASK_ENV=development launcher
+│  ├─ run_dev.py                     # Flask dev launcher
 │  ├─ run_gunicorn.sh                # production launcher (intranet only)
 │  └─ migrate_from_multi_repo.md     # notes for subtree/filter-repo import
 ├─ requirements.txt
 ├─ environment.yml
+├─ package-lock.json / pnpm-lock.yaml / yarn.lock
 ├─ README.md
 └─ AGENTS.md
 ```
-
-**Golden rule**: **`core/` is importable and testable without Flask**. All side‑effects (HTTP, file streams) happen in `api/` wrappers that compose `core/`.
-
----
-
-## 2) Architectural Conventions
-
-1. **Framework**: Flask (WSGI) with Blueprints per plugin. Use simple `werkzeug` for streams.
-2. **Endpoints**: Stateless POST/GET returning JSON + downloadable responses with `Content-Disposition: attachment`.
-3. **No persistence**: User uploads handled as `BytesIO`; transient artifacts placed in **tmpfs** (Linux: `/dev/shm/ml_server_aio/<uuid>`). A teardown hook **always** deletes the dir.
-4. **Limits**: Enforce maximum upload size (`MAX_CONTENT_LENGTH`), per‑endpoint size caps, and timeouts. Return **413** if exceeded.
-5. **Models**: Load once per worker with **warm‑start** endpoint `GET /api/v1/<tool>/warmup` to amortize load time.
-6. **Concurrency**: Prefer simple, synchronous flows; use short‑lived threads/process pools only if needed; always bound by time/memory.
-7. **Schemas**: Define pydantic‑ish schema (dataclasses + `common.validate`) for each request/response.
-8. **MIME Discipline**: Strict MIME & extension checks. Disable MIME sniffing headers (`X-Content-Type-Options: nosniff`).
+**Golden rule**: **`core/` is importable and testable without Flask**. All side‑effects (HTTP, file streams) happen in `api/` wrappers that compose `core/`. The React SPA is the **only** place where UI is rendered.
 
 ---
 
-## 3) Privacy & Security Guardrails (Non‑Negotiable)
+## 2) Architecture at a Glance (React‑First Hybrid)
+
+- **Backend**: Flask app with **plugins** (Blueprints) under `/api/<plugin>/…`. All common logic (IO, validation, errors, logging, responses) lives in `common/`.
+- **Frontend**: **React + Vite** integrated and served by Flask. A single HTML shell loads the React SPA; all tool UIs are React components.
+- **Data Flow**: React calls JSON APIs; Flask never renders tool UIs. Any images/files are returned as downloads or links; data for charts is JSON.
+- **Offline**: No external calls/CDNs at runtime; all assets bundled.
+
+---
+
+## 3) Architectural Conventions
+
+1. **Framework**: Flask (WSGI) with Blueprints per plugin.
+2. **Endpoints**: Stateless GET/POST returning JSON or downloads with `Content-Disposition: attachment`.
+3. **No persistence**: User uploads handled as `BytesIO`; artifacts in **tmpfs** (Linux: `/dev/shm/ml_server_aio/<uuid>`). A teardown hook **always** deletes the dir.
+4. **Limits**: Enforce upload caps (`MAX_CONTENT_LENGTH`), per‑endpoint size/timeouts. Return **413** for size violations.
+5. **Models**: Load once per worker; optional warm‑start `GET /api/v1/<tool>/warmup` to amortize latency.
+6. **Concurrency**: Prefer simple sync flows; if needed, short‑lived thread/process pools with bounded time/memory.
+7. **Schemas**: Dataclasses/pydantic‑ish validation via `common.validate` for each request/response.
+8. **MIME Discipline**: Strict MIME & extension checks; `X-Content-Type-Options: nosniff`.
+9. **Response Schema** (unified):
+   - Success → `{ "success": true, "data": ... }`
+   - Error → `{ "success": false, "error": { "code": "<id>", "message": "...", "details": {…} } }`
+
+---
+
+## 4) Privacy & Security Guardrails (Non‑Negotiable)
 
 - **No logging of user inputs/outputs**. Only ephemeral, on‑screen run summaries (never saved).
-- **No analytics, cookies, localStorage, IndexedDB, service workers, background sync**.
-- **CSP**: default‑src 'self'; img-src 'self' blob:; object-src 'none'; frame‑ancestors 'none'.
-- **Uploads**: Reject archives with nested paths (`..`), enforce filename sanitization, use random safe names in tmpfs.
+- **No analytics; no external telemetry; no CDN assets**.
+- **CSP**: `default-src 'self'; img-src 'self' blob:; object-src 'none'; frame-ancestors 'none'`.
+- **Uploads**: Reject archives with nested paths (`..`); sanitize names; use random safe names in tmpfs.
 - **Downloads**: Always `Content-Disposition: attachment; filename="<safe>"`.
 - **Secrets**: No hard‑coded secrets; intranet only; CORS disabled.
-- **Accessibility & Keyboard navigation**: required (labels, aria-*).
+- **Accessibility**: Keyboard navigation, labels, ARIA roles; high contrast.
 
 ---
 
-## 4) Plugin Contract (Agent must follow)
+## 5) Plugin Contract (Agents must follow)
 
 **Folder**: `plugins/<tool_name>/`
 
 **Required files**:
-- `api/__init__.py` -> `bp = Blueprint("tool_name", __name__, url_prefix="/tool_name")` with routes:
-  - UI pages: `GET /tool_name/` (index), others as needed
-  - API: `POST /api/v1/tool_name/<op>` (pure wrappers around `core/`)
-- `core/` -> pure functions/classes with docstrings + unit tests; **no Flask**, **no disk I/O**.
-- `ui/` -> `templates/tool_name/*.html`, `static/tool_name/{css,js}` (namespaced).
-- `tests/` -> pytest unit tests for `core` and route tests for `api` (using Flask test client).
+- `api/__init__.py` → `bp = Blueprint("tool_name", __name__, url_prefix="/api/<tool_name>")` with routes like:
+  - `POST /api/<tool_name>/<op>` (pure wrappers around `core/`)
+  - `GET  /api/<tool_name>/warmup` (optional)
+- `core/` → pure functions/classes with docstrings + unit tests; **no Flask**, **no disk I/O**.
+- `tests/` → pytest unit tests for `core` and route tests for `api` (Flask test client).
 
 **Route shape** (example):
 ```
-POST /api/v1/pdf_tools/merge
+POST /api/pdf_tools/merge
 Request: multipart/form-data files=[pdf1, pdf2, ...]  (max N, max size M)
 Response: application/pdf (download), headers set, no persistence
 Errors: 400 (validation), 413 (too large), 500 (internal sanitized)
 ```
 
----
-
-## 5) Coding Standards
-
-- **Python**: 3.11+, type hints (mypy‑clean), `ruff` style, small functions, docstrings with Examples.
-- **JS**: ES2017 baseline, vanilla modules, no transpilation; keep files <300 LOC where possible.
-- **HTML/CSS**: semantic HTML5, CSS Grid/Flexbox; use shared tokens in `/app/ui/static/css/core.css`.
-- **UX**: explicit labels/placeholders; progress spinners; clear error banners.
-- **Testing**: `pytest -q`; aim for 80%+ in `core/`; smoke tests for `api/` endpoints and UI templates render.
-- **Performance budgets**: Document per‑tool RAM/CPU estimates; reject oversized inputs early.
+> **Note**: All UI is React; **do not** add Jinja templates for plugins. Provide JSON data suitable for charts/tables in the SPA.
 
 ---
 
-## 6) Migration Plan (from multi‑repo to monorepo)
-all the functionality should be preserved.
-cross browser compatability  must be ensured.
+## 6) Backend Conventions
+
+- **Blueprint per plugin**: `plugins/<plugin>/api/__init__.py`
+- **Routes**: `/api/<plugin>/<action>`; verbs: GET (metadata), POST (processing).
+- **Errors**: raise `AppError(code, message, details)` → JSON via `common.errors`.
+- **Logging**: `common.logging.get_logger(__name__)` (request IDs, durations).
+- **Config**: Global config via `config.yml`; read once, inject into plugins.
+- **Files**: `common.io_mem` for tmpfs, safe paths, allowed mime/types, size checks.
+
 ---
 
-## 7) Acceptance Checklist (Agents must self‑verify)
+## 7) Frontend Conventions
 
-- [ ] Builds offline: `conda env create -f environment.yml` (no network beyond internal mirrors)
+- **Structure**: `frontend/src/{components,features,routes,lib}`
+- **State**: Local state or lightweight store (e.g., Zustand); avoid over‑engineering.
+- **Networking**: `lib/api.ts` wraps `fetch` with error normalization and spinner hooks.
+- **UX Components** (shared):
+  - `LoadingOverlay` — global spinner overlay during inflight requests.
+  - `SettingsModal` — per‑tool advanced settings (persist; apply triggers refresh).
+  - `ChartPanel` — interactive charts (Recharts/Chart.js), tooltips/legends.
+- **Routing**: React Router; SPA navigation (no full reloads).
+- **Styling**: Tailwind or CSS modules; all assets bundled (no remote fonts/CDNs).
+
+---
+
+## 8) UX Standards
+
+- **Feedback**: Always show a spinner/progress on long tasks; disable actions while running.
+- **Charts**: Prefer interactive charts over static images; hover tooltips; responsive layout.
+- **Settings**: Gear icon opens a modal with relevant controls; sensible defaults; persist choices.
+- **Errors**: Prominent banners with actionable messages; consistent schema from backend.
+
+---
+
+## 9) Testing Policy
+
+- **Backend (pytest)**: Validate schemas, error codes, size/time limits, file handling, core logic.
+- **Frontend (Vitest/RTL)**: Components render; settings apply; spinners show/hide correctly.
+- **E2E (Playwright)**: At least two tools covered end‑to‑end (upload → process → results).
+- **Performance checks**: Bundle size guard; long‑task smoke (timeouts under agreed thresholds).
+- **Coverage**: Aim 80%+ in `core/`; smoke tests for routes; visual/e2e screenshots stored as text artifacts (no binaries committed).
+
+---
+
+## 10) CI/CD
+
+- **Checks**: Ruff/Black (Python), ESLint/Prettier (JS/TS), mypy/tsc, pytest, Playwright, Vite build.
+- **Artifacts**: Vite build outputs to `app/ui/static/react/` with hashed filenames.
+- **Dev Flow**: `npm run dev` (Vite) with proxy to Flask `/api/*`; or `scripts` to run both.
+- **Releases**: Tag + changelog; publish Docker image/intranet artifact.
+
+---
+
+## 11) Acceptance Checklist (Self‑Verify Before PR)
+
+- [ ] Builds offline: `conda env create -f environment.yml` (only internal mirrors)
 - [ ] `pytest` all green; coverage report >= 80% for `core/`
-- [ ] `flask run` serves home + each plugin index
+- [ ] `flask run` serves SPA shell and APIs; no Jinja tool pages remain
 - [ ] All endpoints enforce size/time limits; return correct HTTP codes
 - [ ] No network calls; CSP + headers audited
-- [ ] Visual smoke: Each tool UI renders, uploads a sample, shows result, and downloads artifact (simulated in tests)
-- [ ] **Compatibility checklist** (below) passes
-
-**Compatibility checklist**
-- [ ] Works on Chrome, Firefox, Edge (same UX + behavior)
-- [ ] No non‑standard APIs
-- [ ] No third‑party/CDN assets
-- [ ] Fallbacks for WS/SSE (long‑poll util provided)
-- [ ] Keyboard‑navigable, accessible labels/aria
+- [ ] SPA smoke: Each tool UI navigates, uploads a sample, shows results, downloads artifact (e2e)
+- [ ] **Compatibility**: Chrome, Firefox, Edge → same UX/behavior
+- [ ] No non‑standard APIs / No CDN assets
+- [ ] Long‑poll fallback for WS/SSE (if used)
+- [ ] Keyboard‑navigable; ARIA labels; accessible color/contrast
 - [ ] PC‑first layout (≥1280px), graceful downscale; mobile not required
 
 ---
 
-## 8) Commit, Branch & PR Rules
+## 12) Commit, Branch & PR Rules
 
 - **Branches**: `main` (stable), `dev` (integration), `feature/<tool>-<feat>`
-- **Commits**: Conventional commits (`feat:`, `fix:`, `docs:`...). Message must state privacy impact (if any).
+- **Commits**: Conventional commits (`feat:`, `fix:`, `docs:`...). State privacy impact if any.
 - **PR Template** must include:
-  - Checklist from §7
-  - Screenshots/GIFs of UI (from sandbox) OR deterministic text artifact summary
-  - Test plan + perf notes
+  - Checklist from §11
+  - Screenshots/GIFs of UI (or deterministic text artifact summary)
+  - Test plan + performance notes
   - API changes (request/response schema diffs)
+  - Docs updated (Y/N)
 
 ---
 
-## 9) Run Modes
+## 13) Run Modes
 
-- **Development**: `python scripts/run_dev.py` (auto‑reload off for safety), debug toolbar disabled.
-- **Production (intranet)**: `scripts/run_gunicorn.sh` spawning N workers (CPU‑bound estimate), tmpfs configured, limits enforced.
+- **Development**: `python scripts/run_dev.py` (debug toolbar off), `npm run dev` for SPA.
+- **Production (intranet)**: `scripts/run_gunicorn.sh` spawning N workers; tmpfs configured; limits enforced.
 
 ---
 
-## 10) Risk Register (agents must watch & mitigate)
+## 14) Risk Register (watch & mitigate)
 
 - **OOM** on large PDFs/images → hard caps + graceful 413
 - **Model warm‑load latency** → warmup endpoint, lazy load on first call
-- **Cross‑plugin CSS/JS leakage** → strict namespacing & BEM‑style classes
-- **Silent privacy regressions** → static scanner to flag forbidden APIs (fetch to external, localStorage usage, etc.)
+- **Cross‑plugin CSS/JS leakage** → React isolation + CSS modules; no global leakage
+- **Silent privacy regressions** → static scanner to flag forbidden APIs (external fetch, localStorage usage, etc.)
 - **Inconsistent schemas** → shared validators in `common/validate.py`
+- **Stale assets** → Vite hashed assets; cache‑busting; rebuild scripts
 
 ---
 
-## 11) Example Blueprint Skeleton (to imitate)
+## 15) Migration Plan (from multi‑repo to monorepo)
+
+- Preserve all functionality and parity.
+- Ensure cross‑browser compatibility.
+- Replace plugin Jinja pages with React routes; expose JSON from backend.
+- Document endpoint/contract changes in `MIGRATION_NOTES.md`.
+
+---
+
+## 16) Breaking Changes Policy
+
+- Avoid when possible; if required, document in `MIGRATION_NOTES.md` with:
+  - Old vs new endpoints/fields
+  - Transition guidance
+  - Rationale and timeline
+
+---
+
+## 17) Task Template (for future prompts)
+
+```
+Title: <short actionable title>
+
+Context:
+- What part of the system and why this change is needed.
+
+Scope:
+- Backend changes (routes, schemas, common utilities)
+- Frontend changes (components, routes, state)
+- Tests and docs
+
+Steps:
+1) …
+2) …
+3) …
+
+Success Criteria:
+- Observable, testable outcomes (API schema, UI behavior, tests passing).
+
+Constraints:
+- Offline-safe, no CDNs
+- Performance/accessibility targets
+- Backward compatibility expectations
+
+Artifacts:
+- PR(s) with screenshots, test logs, updated docs
+```
+
+---
+
+## 18) Example Blueprint Skeleton (to imitate)
 
 ```python
 # plugins/pdf_tools/api/__init__.py
-from flask import Blueprint, request, send_file, abort
+from flask import Blueprint, request, send_file
 from io import BytesIO
-from ..core.merge import merge_pdfs
 from ...common.io_mem import new_tmpfs_dir, secure_filename
 from ...common.validate import ensure_pdfs
+from ...common.errors import AppError
+from ...common.responses import ok, fail
+from ..core.merge import merge_pdfs
 
-bp = Blueprint("pdf_tools", __name__, url_prefix="/pdf_tools")
+bp = Blueprint("pdf_tools", __name__, url_prefix="/api/pdf_tools")
 
-@bp.post("/api/v1/merge")
+@bp.post("/merge")
 def merge():
     files = request.files.getlist("files")
     ensure_pdfs(files)  # size, count, mime, filename checks
@@ -206,12 +313,21 @@ def merge():
             download_name="merged.pdf",
             max_age=0,
         )
+    except AppError as e:
+        return fail(e), 400
     finally:
         tmpdir.cleanup()  # always purge
 ```
 
 ---
 
-**You are done when** the site runs offline, passes the acceptance checklist, and each plugin delivers feature parity with the old multi‑repo setup, but with uniform UX and airtight privacy.
-**IMPORTANT** No committing of binary files at all. 
-Create representative and relavent screenshots of UX for preview along ith diff and logs so that we can judge the success of the task.
+## 19) Ownership & Governance
+
+- Each plugin has an owner (CODEOWNERS) for review.
+- Core UX components (`LoadingOverlay`, `SettingsModal`, `ChartPanel`) are owned by the frontend team; changes require their approval.
+- Public API/schema changes require backend lead sign‑off and `MIGRATION_NOTES.md` entry.
+
+---
+
+**You are done when** the site runs offline, passes the acceptance checklist, and each plugin delivers feature parity with the old multi‑repo setup **with React SPA UI**, uniform APIs, and airtight privacy.  
+**IMPORTANT** Never commit binary files. Provide representative **text‑based** screenshots/records (e.g., Playwright traces, logs) to judge success. always generate **Previews** of screenshots of importan workflows, home page etc for inspection at the end of the task in chat message.
