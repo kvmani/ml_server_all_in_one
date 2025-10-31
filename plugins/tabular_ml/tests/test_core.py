@@ -2,14 +2,19 @@ import pandas as pd
 import pytest
 
 from plugins.tabular_ml.core import (
+    algorithm_metadata,
     ModelNotReadyError,
     TabularError,
     drop_dataset,
     export_batch_predictions_csv,
+    detect_outliers,
+    filter_rows,
+    histogram_points,
     load_dataset,
     predict_batch,
     predict_single,
     register_dataset,
+    remove_outliers,
     scatter_points,
     train_model,
     train_on_dataset,
@@ -154,3 +159,44 @@ def test_predict_batch_exports_csv():
     drop_dataset(profile.dataset_id)
     with pytest.raises(ModelNotReadyError):
         export_batch_predictions_csv(profile.dataset_id)
+
+
+def test_histogram_points_returns_counts():
+    df = pd.DataFrame({"value": [1, 2, 3, 4, 5, 6]})
+    profile = register_dataset(df.to_csv(index=False).encode())
+    histogram = histogram_points(profile.dataset_id, "value", bins=3)
+    assert histogram["counts"]
+    assert len(histogram["edges"]) == 4
+    drop_dataset(profile.dataset_id)
+
+
+def test_detect_and_remove_outliers():
+    df = pd.DataFrame({"value": [1] * 10 + [25]})
+    profile = register_dataset(df.to_csv(index=False).encode())
+    report = detect_outliers(profile.dataset_id)
+    assert report.total_outliers == 1
+    cleaned = remove_outliers(profile.dataset_id)
+    assert cleaned.shape[0] == len(df) - 1
+    drop_dataset(profile.dataset_id)
+
+
+def test_filter_rows_reduces_dataset():
+    df = pd.DataFrame({"value": [1, 2, 3, 4], "label": ["a", "b", "c", "d"]})
+    profile = register_dataset(df.to_csv(index=False).encode())
+    filtered, removed = filter_rows(profile.dataset_id, [{"column": "value", "operator": "gt", "value": 2}])
+    assert removed == 2
+    assert filtered.shape[0] == 2
+    drop_dataset(profile.dataset_id)
+
+
+def test_algorithm_metadata_contains_linear_model_params():
+    metadata = algorithm_metadata()
+    assert "linear_model" in metadata
+    params = metadata["linear_model"]["hyperparameters"]
+    assert any(param["name"] == "max_iter" for param in params)
+
+
+def test_train_model_rejects_invalid_hyperparameter_type():
+    df = pd.DataFrame({"x": [1, 2, 3, 4], "target": [0, 1, 0, 1]})
+    with pytest.raises(TabularError):
+        train_model(df, "target", algorithm="linear_model", hyperparameters={"max_iter": "abc"})

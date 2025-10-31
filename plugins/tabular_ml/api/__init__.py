@@ -12,15 +12,20 @@ from ..core import (
     DatasetProfile,
     ModelNotReadyError,
     TabularError,
+    algorithm_metadata,
     build_profile,
+    detect_outliers,
     drop_dataset,
     export_batch_predictions_csv,
     export_predictions_csv,
+    filter_rows,
     get_dataset,
+    histogram_points,
     latest_result,
     predict_batch,
     predict_single,
     register_dataset,
+    remove_outliers,
     scatter_points,
     train_on_dataset,
 )
@@ -56,7 +61,12 @@ def _upload_limits() -> FileLimit:
 def index() -> str:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("tabular_ml", {})
     renderer = current_app.extensions.get("render_react")
-    if not renderer:
+    # Allow forcing the server-rendered interface even when the React renderer is
+    # registered. This keeps the richer HTML/JS experience accessible in
+    # environments where the React bundle is unavailable or when documentation
+    # explicitly references the classic UI.
+    force_classic = request.args.get("ui") == "classic"
+    if not renderer or force_classic:
         return render_template("tabular_ml/index.html", plugin_settings=settings)
 
     theme_state = current_app.extensions.get("theme_state")
@@ -108,11 +118,42 @@ def scatter(dataset_id: str) -> Response:
     x = payload.get("x")
     y = payload.get("y")
     color = payload.get("color")
+    max_points = payload.get("max_points", 400)
     if not x or not y:
         return jsonify({"error": "Scatter plot requires x and y columns"}), 400
     try:
-        result = scatter_points(dataset_id, x, y, color=color)
-    except TabularError as exc:
+        result = scatter_points(dataset_id, x, y, color=color, max_points=int(max_points))
+    except (TabularError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(result)
+
+
+@bp.post("/api/v1/datasets/<dataset_id>/histogram")
+def histogram(dataset_id: str) -> Response:
+    payload = request.get_json(silent=True) or {}
+    column = payload.get("column")
+    if not column:
+        return jsonify({"error": "Histogram column is required"}), 400
+    bins = payload.get("bins", 30)
+    density = bool(payload.get("density", False))
+    range_payload = payload.get("range")
+    value_range = None
+    if range_payload is not None:
+        if not isinstance(range_payload, (list, tuple)) or len(range_payload) != 2:
+            return jsonify({"error": "Histogram range must contain [min, max]"}), 400
+        try:
+            value_range = (float(range_payload[0]), float(range_payload[1]))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Histogram range must contain numeric values"}), 400
+    try:
+        result = histogram_points(
+            dataset_id,
+            column,
+            bins=int(bins),
+            density=density,
+            value_range=value_range,
+        )
+    except (TabularError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify(result)
 
@@ -126,8 +167,16 @@ def train(dataset_id: str) -> Response:
     algorithm = payload.get("algorithm", "auto")
     if not isinstance(algorithm, str):
         return jsonify({"error": "Algorithm must be a string"}), 400
+    hyperparameters = payload.get("hyperparameters")
+    if hyperparameters is not None and not isinstance(hyperparameters, dict):
+        return jsonify({"error": "Hyperparameters must be provided as an object"}), 400
     try:
-        result = train_on_dataset(dataset_id, target, algorithm=algorithm)
+        result = train_on_dataset(
+            dataset_id,
+            target,
+            algorithm=algorithm,
+            hyperparameters=hyperparameters,
+        )
     except TabularError as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify(
@@ -144,6 +193,63 @@ def train(dataset_id: str) -> Response:
             "target": result.target_column,
         }
     )
+
+
+@bp.post("/api/v1/datasets/<dataset_id>/preprocess/outliers/detect")
+def detect_outliers_endpoint(dataset_id: str) -> Response:
+    payload = request.get_json(silent=True) or {}
+    columns = payload.get("columns")
+    if columns is not None and not isinstance(columns, list):
+        return jsonify({"error": "Columns must be provided as a list"}), 400
+    threshold = payload.get("threshold", 3.0)
+    try:
+        threshold_value = float(threshold)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Threshold must be numeric"}), 400
+    try:
+        report = detect_outliers(dataset_id, columns=columns, threshold=threshold_value)
+    except TabularError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(
+        {
+            "method": report.method,
+            "threshold": report.threshold,
+            "total_outliers": report.total_outliers,
+            "inspected_columns": report.inspected_columns,
+            "sample_indices": report.sample_indices,
+        }
+    )
+
+
+@bp.post("/api/v1/datasets/<dataset_id>/preprocess/outliers/remove")
+def remove_outliers_endpoint(dataset_id: str) -> Response:
+    payload = request.get_json(silent=True) or {}
+    columns = payload.get("columns")
+    if columns is not None and not isinstance(columns, list):
+        return jsonify({"error": "Columns must be provided as a list"}), 400
+    threshold = payload.get("threshold", 3.0)
+    try:
+        threshold_value = float(threshold)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Threshold must be numeric"}), 400
+    try:
+        profile = remove_outliers(dataset_id, columns=columns, threshold=threshold_value)
+    except TabularError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({**_profile_payload(profile), "threshold": threshold_value})
+
+
+@bp.post("/api/v1/datasets/<dataset_id>/preprocess/filter")
+def apply_filters_endpoint(dataset_id: str) -> Response:
+    payload = request.get_json(silent=True) or {}
+    rules = payload.get("rules")
+    if not isinstance(rules, list):
+        return jsonify({"error": "Rules must be provided as a list"}), 400
+    try:
+        profile, removed = filter_rows(dataset_id, rules)
+    except TabularError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({**_profile_payload(profile), "rows_removed": removed})
 
 
 @bp.post("/api/v1/datasets/<dataset_id>/predict")
@@ -234,6 +340,11 @@ def profile(dataset_id: str) -> Response:
     except TabularError as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify(_profile_payload(profile))
+
+
+@bp.get("/api/v1/algorithms")
+def algorithms() -> Response:
+    return jsonify({"algorithms": algorithm_metadata()})
 
 
 def _profile_payload(profile: DatasetProfile) -> dict:

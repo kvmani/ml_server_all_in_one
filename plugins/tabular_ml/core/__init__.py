@@ -9,7 +9,7 @@ import csv
 import math
 import threading
 import uuid
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -23,6 +23,9 @@ from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import accuracy_score, mean_squared_error
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+
+
+NumericSeries = pd.Series
 
 
 class TabularError(ValueError):
@@ -66,6 +69,15 @@ class DatasetProfile:
     numeric_columns: List[str]
 
 
+@dataclass
+class OutlierReport:
+    method: str
+    inspected_columns: List[str]
+    threshold: float
+    total_outliers: int
+    sample_indices: List[int]
+
+
 class DatasetStore:
     """Keep uploaded datasets in memory for the duration of the request cycle."""
 
@@ -96,6 +108,13 @@ class DatasetStore:
         with self._lock:
             self._items.pop(token, None)
 
+    def update(self, token: str, df: pd.DataFrame) -> None:
+        with self._lock:
+            if token not in self._items:
+                raise TabularError("Dataset reference expired. Upload again.")
+            self._items[token] = df
+            self._items.move_to_end(token)
+
 
 _STORE = DatasetStore()
 _LATEST_RESULTS: "OrderedDict[str, TrainingResult]" = OrderedDict()
@@ -110,6 +129,13 @@ def _row_identifier(index: object) -> object:
 
 def _to_python(value: object) -> object:
     return value.item() if hasattr(value, "item") else value
+
+
+def _to_numeric_series(series: pd.Series) -> NumericSeries:
+    numeric = pd.to_numeric(series, errors="coerce")
+    if numeric.isna().all():
+        raise TabularError(f"Column '{series.name}' does not contain numeric values")
+    return numeric.astype(float)
 
 
 def load_dataset(data: bytes) -> pd.DataFrame:
@@ -203,6 +229,422 @@ def scatter_points(dataset_id: str, x: str, y: str, color: Optional[str] = None,
     return result
 
 
+def histogram_points(
+    dataset_id: str,
+    column: str,
+    *,
+    bins: int = 30,
+    density: bool = False,
+    value_range: Optional[Tuple[float, float]] = None,
+) -> Dict[str, object]:
+    df = get_dataset(dataset_id)
+    if column not in df.columns:
+        raise TabularError(f"Column '{column}' not found")
+    series = _to_numeric_series(df[column]).dropna()
+    if series.empty:
+        raise TabularError(f"Column '{column}' does not contain numeric values")
+
+    bins = int(bins)
+    if bins < 2 or bins > 200:
+        raise TabularError("Histogram bins must be between 2 and 200")
+
+    range_tuple: Optional[Tuple[float, float]] = None
+    if value_range:
+        start, end = value_range
+        if not math.isfinite(start) or not math.isfinite(end):
+            raise TabularError("Histogram range must be finite numbers")
+        if start >= end:
+            raise TabularError("Histogram range minimum must be less than maximum")
+        range_tuple = (float(start), float(end))
+
+    counts, edges = np.histogram(series.to_numpy(), bins=bins, density=bool(density), range=range_tuple)
+    centres = (edges[:-1] + edges[1:]) / 2
+    return {
+        "column": column,
+        "bins": bins,
+        "density": bool(density),
+        "edges": [float(edge) for edge in edges],
+        "centres": [float(value) for value in centres],
+        "counts": [float(count) for count in counts],
+    }
+
+
+def _numeric_columns(df: pd.DataFrame, columns: Optional[Sequence[str]] = None) -> List[str]:
+    if columns:
+        missing = [column for column in columns if column not in df.columns]
+        if missing:
+            raise TabularError("Columns not found: " + ", ".join(missing))
+        numeric_columns = [column for column in columns if pd.api.types.is_numeric_dtype(df[column])]
+        if not numeric_columns:
+            raise TabularError("Selected columns do not contain numeric values")
+        return numeric_columns
+    detected = df.select_dtypes(include=["number"]).columns.tolist()
+    if not detected:
+        raise TabularError("Dataset has no numeric columns available")
+    return detected
+
+
+def detect_outliers(
+    dataset_id: str,
+    *,
+    columns: Optional[Sequence[str]] = None,
+    threshold: float = 3.0,
+) -> OutlierReport:
+    df = get_dataset(dataset_id)
+    if threshold <= 0 or not math.isfinite(threshold):
+        raise TabularError("Outlier threshold must be a positive number")
+
+    numeric_columns = _numeric_columns(df, columns)
+    z_scores = pd.DataFrame(index=df.index)
+    for column in numeric_columns:
+        numeric_series = _to_numeric_series(df[column])
+        std = float(numeric_series.std(ddof=0))
+        if std == 0 or math.isnan(std):
+            z_scores[column] = 0.0
+            continue
+        z_scores[column] = (numeric_series - float(numeric_series.mean())) / std
+
+    mask = (z_scores.abs() > threshold).any(axis=1)
+    indices = [int(_row_identifier(idx)) for idx in df.index[mask]]
+    return OutlierReport(
+        method="zscore",
+        inspected_columns=list(numeric_columns),
+        threshold=float(threshold),
+        total_outliers=len(indices),
+        sample_indices=indices[:20],
+    )
+
+
+def remove_outliers(
+    dataset_id: str,
+    *,
+    columns: Optional[Sequence[str]] = None,
+    threshold: float = 3.0,
+) -> DatasetProfile:
+    df = get_dataset(dataset_id)
+    report = detect_outliers(dataset_id, columns=columns, threshold=threshold)
+    if not report.inspected_columns:
+        return build_profile(dataset_id, df)
+
+    numeric_df = df[list(report.inspected_columns)].apply(pd.to_numeric, errors="coerce")
+    z_scores = pd.DataFrame(index=df.index)
+    for column in report.inspected_columns:
+        series = numeric_df[column]
+        std = float(series.std(ddof=0))
+        if std == 0 or math.isnan(std):
+            z_scores[column] = 0.0
+            continue
+        z_scores[column] = (series - float(series.mean())) / std
+    mask = (z_scores.abs() > report.threshold).any(axis=1)
+    cleaned = df.loc[~mask].reset_index(drop=True)
+    _STORE.update(dataset_id, cleaned)
+    return build_profile(dataset_id, cleaned)
+
+
+SUPPORTED_FILTER_OPERATORS = {
+    "eq": lambda series, value: series == value,
+    "ne": lambda series, value: series != value,
+    "gt": lambda series, value: series > value,
+    "gte": lambda series, value: series >= value,
+    "lt": lambda series, value: series < value,
+    "lte": lambda series, value: series <= value,
+    "contains": lambda series, value: series.astype(str).str.contains(str(value), na=False),
+    "in": lambda series, value: series.isin(value if isinstance(value, Iterable) and not isinstance(value, (str, bytes)) else [value]),
+}
+
+
+def filter_rows(dataset_id: str, rules: Sequence[Mapping[str, object]]) -> Tuple[DatasetProfile, int]:
+    df = get_dataset(dataset_id)
+    if not rules:
+        raise TabularError("Provide at least one filter rule")
+
+    mask = pd.Series(True, index=df.index)
+    for rule in rules:
+        column = rule.get("column")
+        operator = rule.get("operator", "eq")
+        value = rule.get("value")
+        if not isinstance(column, str) or column not in df.columns:
+            raise TabularError(f"Column '{column}' not found in dataset")
+        if operator not in SUPPORTED_FILTER_OPERATORS:
+            raise TabularError(f"Unsupported operator '{operator}'")
+
+        series = df[column]
+        comparator = SUPPORTED_FILTER_OPERATORS[operator]
+        if operator != "contains" and pd.api.types.is_numeric_dtype(series):
+            try:
+                value = float(value) if value is not None else value
+            except (TypeError, ValueError):  # pragma: no cover - defensive fallback
+                pass
+        mask &= comparator(series, value)
+
+    filtered = df.loc[mask]
+    if filtered.empty:
+        raise TabularError("Filters removed all rows. Adjust the criteria.")
+
+    filtered = filtered.reset_index(drop=True)
+    removed = int(len(df) - len(filtered))
+    _STORE.update(dataset_id, filtered)
+    profile = build_profile(dataset_id, filtered)
+    return profile, removed
+
+
+AlgorithmParameter = Dict[str, object]
+
+
+def _algorithm_specs() -> Dict[str, Dict[str, object]]:
+    return {
+        "linear_model": {
+            "label": "Generalised linear model",
+            "tasks": {
+                "classification": {
+                    "use_scaler": True,
+                    "builder": lambda: LogisticRegression(max_iter=1000, solver="lbfgs"),
+                    "hyperparameters": {
+                        "max_iter": {
+                            "type": "int",
+                            "default": 1000,
+                            "min": 100,
+                            "max": 5000,
+                            "step": 50,
+                        },
+                        "C": {
+                            "type": "float",
+                            "default": 1.0,
+                            "min": 0.01,
+                            "max": 10.0,
+                            "step": 0.01,
+                        },
+                        "penalty": {
+                            "type": "select",
+                            "default": "l2",
+                            "choices": ["l2", "none"],
+                        },
+                        "solver": {
+                            "type": "select",
+                            "default": "lbfgs",
+                            "choices": ["lbfgs", "saga"],
+                        },
+                    },
+                },
+                "regression": {
+                    "use_scaler": True,
+                    "builder": lambda: Ridge(alpha=1.0),
+                    "hyperparameters": {
+                        "alpha": {
+                            "type": "float",
+                            "default": 1.0,
+                            "min": 0.0,
+                            "max": 100.0,
+                            "step": 0.1,
+                        },
+                        "fit_intercept": {
+                            "type": "bool",
+                            "default": True,
+                        },
+                    },
+                },
+            },
+        },
+        "random_forest": {
+            "label": "Random forest ensemble",
+            "tasks": {
+                "classification": {
+                    "use_scaler": False,
+                    "builder": lambda: RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1),
+                    "hyperparameters": {
+                        "n_estimators": {
+                            "type": "int",
+                            "default": 200,
+                            "min": 10,
+                            "max": 1000,
+                            "step": 10,
+                        },
+                        "max_depth": {
+                            "type": "int",
+                            "default": None,
+                            "min": 1,
+                            "max": 50,
+                            "nullable": True,
+                        },
+                        "min_samples_split": {
+                            "type": "int",
+                            "default": 2,
+                            "min": 2,
+                            "max": 20,
+                        },
+                    },
+                },
+                "regression": {
+                    "use_scaler": False,
+                    "builder": lambda: RandomForestRegressor(n_estimators=300, random_state=42, n_jobs=-1),
+                    "hyperparameters": {
+                        "n_estimators": {
+                            "type": "int",
+                            "default": 300,
+                            "min": 10,
+                            "max": 1000,
+                            "step": 10,
+                        },
+                        "max_depth": {
+                            "type": "int",
+                            "default": None,
+                            "min": 1,
+                            "max": 50,
+                            "nullable": True,
+                        },
+                        "min_samples_split": {
+                            "type": "int",
+                            "default": 2,
+                            "min": 2,
+                            "max": 20,
+                        },
+                    },
+                },
+            },
+        },
+        "gradient_boosting": {
+            "label": "Gradient boosting ensemble",
+            "tasks": {
+                "classification": {
+                    "use_scaler": False,
+                    "builder": lambda: GradientBoostingClassifier(random_state=42),
+                    "hyperparameters": {
+                        "n_estimators": {
+                            "type": "int",
+                            "default": 100,
+                            "min": 10,
+                            "max": 500,
+                            "step": 10,
+                        },
+                        "learning_rate": {
+                            "type": "float",
+                            "default": 0.1,
+                            "min": 0.01,
+                            "max": 1.0,
+                            "step": 0.01,
+                        },
+                        "max_depth": {
+                            "type": "int",
+                            "default": 3,
+                            "min": 1,
+                            "max": 8,
+                        },
+                    },
+                },
+                "regression": {
+                    "use_scaler": False,
+                    "builder": lambda: GradientBoostingRegressor(random_state=42),
+                    "hyperparameters": {
+                        "n_estimators": {
+                            "type": "int",
+                            "default": 100,
+                            "min": 10,
+                            "max": 500,
+                            "step": 10,
+                        },
+                        "learning_rate": {
+                            "type": "float",
+                            "default": 0.1,
+                            "min": 0.01,
+                            "max": 1.0,
+                            "step": 0.01,
+                        },
+                        "max_depth": {
+                            "type": "int",
+                            "default": 3,
+                            "min": 1,
+                            "max": 8,
+                        },
+                    },
+                },
+            },
+        },
+    }
+
+
+def algorithm_metadata() -> Dict[str, object]:
+    metadata: Dict[str, object] = {}
+    for algorithm, spec in _algorithm_specs().items():
+        entries: List[AlgorithmParameter] = []
+        for task, task_spec in spec["tasks"].items():
+            for name, definition in task_spec["hyperparameters"].items():
+                entry = {
+                    "name": name,
+                    "label": name.replace("_", " ").title(),
+                    "type": definition.get("type", "text"),
+                    "default": definition.get("default"),
+                    "tasks": [task],
+                }
+                for key in ("min", "max", "step", "choices", "nullable"):
+                    if key in definition:
+                        entry[key] = definition[key]
+                entries.append(entry)
+        # Merge duplicate parameter definitions across tasks
+        merged: Dict[str, AlgorithmParameter] = {}
+        for entry in entries:
+            name = entry["name"]
+            if name in merged:
+                merged[name]["tasks"] = sorted(set(merged[name]["tasks"] + entry["tasks"]))
+            else:
+                merged[name] = entry
+        metadata[algorithm] = {
+            "label": spec["label"],
+            "hyperparameters": list(merged.values()),
+        }
+    return metadata
+
+
+def _apply_hyperparameters(
+    estimator: Any,
+    algorithm: str,
+    task: str,
+    overrides: Optional[Mapping[str, object]],
+) -> None:
+    if not overrides:
+        return
+    spec = _algorithm_specs()[algorithm]["tasks"][task]
+    allowed = spec["hyperparameters"]
+    resolved: Dict[str, object] = {}
+    for key, value in overrides.items():
+        if key not in allowed:
+            continue
+        definition = allowed[key]
+        param_type = definition.get("type")
+        if param_type == "int":
+            try:
+                value = int(float(value))
+            except (TypeError, ValueError):
+                raise TabularError(f"Hyperparameter '{key}' must be an integer") from None
+        elif param_type == "float":
+            try:
+                value = float(value)
+            except (TypeError, ValueError):
+                raise TabularError(f"Hyperparameter '{key}' must be numeric") from None
+        elif param_type == "bool":
+            if isinstance(value, str):
+                lowered = value.strip().lower()
+                if lowered in {"true", "1", "yes"}:
+                    value = True
+                elif lowered in {"false", "0", "no"}:
+                    value = False
+                else:
+                    raise TabularError(f"Hyperparameter '{key}' must be true or false")
+            else:
+                value = bool(value)
+        elif param_type == "select":
+            choices = definition.get("choices", [])
+            if value not in choices:
+                raise TabularError(
+                    f"Hyperparameter '{key}' must be one of: {', '.join(map(str, choices))}"
+                )
+        if definition.get("nullable") and value in ("", None):
+            resolved[key] = None
+        else:
+            resolved[key] = value
+    if resolved:
+        estimator.set_params(**resolved)
+
+
 def _prepare(df: pd.DataFrame, target: str) -> Tuple[pd.DataFrame, pd.Series]:
     if target not in df.columns:
         raise TabularError("Target column not found")
@@ -228,39 +670,30 @@ def _resolve_algorithm(task: str, requested: str) -> Tuple[object, bool, str, st
     if not normalized or normalized == "auto":
         normalized = "linear_model"
 
+    specs = _algorithm_specs()
+    if normalized not in specs:
+        raise TabularError("Unsupported algorithm selected")
+
+    task_spec = specs[normalized]["tasks"].get(task)
+    if task_spec is None:  # pragma: no cover - defensive
+        raise TabularError("Algorithm not available for detected task")
+    builder = task_spec["builder"]
+    model = builder()
+    label = specs[normalized]["label"]
     if normalized == "linear_model":
-        if task == "classification":
-            model = LogisticRegression(max_iter=1000)
-            label = "Logistic regression"
-        else:
-            model = Ridge(alpha=1.0)
-            label = "Ridge regression"
-        return model, True, "linear_model", label
-
-    if normalized == "random_forest":
-        if task == "classification":
-            model = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
-            label = "Random forest classifier"
-        else:
-            model = RandomForestRegressor(n_estimators=300, random_state=42, n_jobs=-1)
-            label = "Random forest regressor"
-        return model, False, "random_forest", label
-
-    if normalized == "gradient_boosting":
-        if task == "classification":
-            model = GradientBoostingClassifier(random_state=42)
-            label = "Gradient boosting classifier"
-        else:
-            model = GradientBoostingRegressor(random_state=42)
-            label = "Gradient boosting regressor"
-        return model, False, "gradient_boosting", label
-
-    raise TabularError("Unsupported algorithm selected")
+        label = "Logistic regression" if task == "classification" else "Ridge regression"
+    return model, task_spec["use_scaler"], normalized, label
 
 
-def train_on_dataset(dataset_id: str, target: str, *, algorithm: str = "auto") -> TrainingResult:
+def train_on_dataset(
+    dataset_id: str,
+    target: str,
+    *,
+    algorithm: str = "auto",
+    hyperparameters: Optional[Mapping[str, object]] = None,
+) -> TrainingResult:
     df = get_dataset(dataset_id)
-    result = train_model(df, target, algorithm=algorithm)
+    result = train_model(df, target, algorithm=algorithm, hyperparameters=hyperparameters)
     _LATEST_RESULTS[dataset_id] = result
     # Keep only a small number of cached results
     while len(_LATEST_RESULTS) > _STORE.max_items:
@@ -268,7 +701,13 @@ def train_on_dataset(dataset_id: str, target: str, *, algorithm: str = "auto") -
     return result
 
 
-def train_model(df: pd.DataFrame, target: str, *, algorithm: str = "auto") -> TrainingResult:
+def train_model(
+    df: pd.DataFrame,
+    target: str,
+    *,
+    algorithm: str = "auto",
+    hyperparameters: Optional[Mapping[str, object]] = None,
+) -> TrainingResult:
     X, y = _prepare(df, target)
     task = "classification" if _is_classification(y) else "regression"
 
@@ -295,6 +734,7 @@ def train_model(df: pd.DataFrame, target: str, *, algorithm: str = "auto") -> Tr
         X_train, X_test, y_train, y_test = X, X, y, y
 
     estimator, use_scaler, resolved_algorithm, algorithm_label = _resolve_algorithm(task, algorithm)
+    _apply_hyperparameters(estimator, resolved_algorithm, task, hyperparameters)
 
     scaler: Optional[StandardScaler] = None
     if use_scaler:
@@ -545,9 +985,14 @@ __all__ = [
     "register_dataset",
     "latest_result",
     "latest_batch_prediction",
+    "algorithm_metadata",
+    "detect_outliers",
+    "filter_rows",
+    "histogram_points",
     "scatter_points",
     "export_predictions_csv",
     "export_batch_predictions_csv",
+    "remove_outliers",
     "predict_batch",
     "predict_single",
     "train_model",
