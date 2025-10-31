@@ -1,17 +1,52 @@
+"""PDF tools API blueprint with standardized responses."""
+
 from __future__ import annotations
 
 import base64
 import json
-from io import BytesIO
+from typing import Iterable
 
-from flask import Blueprint, Response, current_app, jsonify, render_template, request, send_file, url_for
+from flask import Blueprint, Response, current_app, render_template, request, url_for
 
-from app.security import secure_filename, validate_mime
-from common.validate import FileLimit, ValidationError, enforce_limits
+from common.errors import AppError, ValidationAppError
+from common.io import secure_filename
+from common.responses import fail, ok
+from common.validation import (
+    FileLimit,
+    SchemaModel,
+    ValidationError,
+    enforce_limits,
+    parse_model,
+    validate_mime,
+)
 
 from ..core import MergeSpec, PageRangeError, merge_pdfs, pdf_metadata, split_pdf
 
-bp = Blueprint(
+
+class MergeItem(SchemaModel):
+    field: str
+    filename: str | None = None
+    pages: str = "all"
+
+
+class MergePayload(SchemaModel):
+    manifest: list[MergeItem]
+    output_name: str | None = None
+
+
+def _merge_limit() -> FileLimit:
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("pdf_tools", {})
+    upload = settings.get("merge_upload")
+    return FileLimit.from_settings(upload, default_max_files=10, default_max_mb=5)
+
+
+def _split_limit() -> FileLimit:
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("pdf_tools", {})
+    upload = settings.get("split_upload")
+    return FileLimit.from_settings(upload, default_max_files=1, default_max_mb=5)
+
+
+ui_bp = Blueprint(
     "pdf_tools",
     __name__,
     url_prefix="/pdf_tools",
@@ -20,7 +55,8 @@ bp = Blueprint(
     static_url_path="/static",
 )
 
-@bp.get("/")
+
+@ui_bp.get("/")
 def index() -> str:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("pdf_tools", {})
     renderer = current_app.extensions.get("render_react")
@@ -29,8 +65,12 @@ def index() -> str:
 
     theme_state = current_app.extensions.get("theme_state")
     apply_theme = current_app.extensions.get("theme_url")
-    _, _, current_theme = theme_state() if callable(theme_state) else ({}, "midnight", "midnight")
-    theme_apply = apply_theme if callable(apply_theme) else (lambda value, _theme: value)
+    _, _, current_theme = (
+        theme_state() if callable(theme_state) else ({}, "midnight", "midnight")
+    )
+    theme_apply = (
+        apply_theme if callable(apply_theme) else (lambda value, _theme: value)
+    )
 
     docs_url = settings.get("docs")
     if docs_url:
@@ -46,95 +86,138 @@ def index() -> str:
     return renderer("pdf_tools", props)
 
 
-def _merge_limit() -> FileLimit:
-    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("pdf_tools", {})
-    upload = settings.get("merge_upload")
-    return FileLimit.from_settings(upload, default_max_files=10, default_max_mb=5)
+api_bp = Blueprint("pdf_tools_api", __name__, url_prefix="/api/pdf_tools")
+legacy_bp = Blueprint("pdf_tools_legacy", __name__, url_prefix="/pdf_tools/api/v1")
 
 
-def _split_limit() -> FileLimit:
-    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("pdf_tools", {})
-    upload = settings.get("split_upload")
-    return FileLimit.from_settings(upload, default_max_files=1, default_max_mb=5)
-
-
-@bp.post("/api/v1/merge")
-def merge() -> Response:
+def _load_manifest() -> MergePayload | Response:
     manifest_raw = request.form.get("manifest")
     if not manifest_raw:
-        return jsonify({"error": "Missing merge manifest"}), 400
+        return fail(
+            ValidationAppError(
+                message="Missing merge manifest", code="pdf.missing_manifest"
+            )
+        )
     try:
         manifest = json.loads(manifest_raw)
     except json.JSONDecodeError as exc:
-        return jsonify({"error": "Invalid manifest format"}), 400
-    if not isinstance(manifest, list) or not manifest:
-        return jsonify({"error": "Manifest must describe at least one PDF"}), 400
+        return fail(
+            ValidationAppError(
+                message="Invalid manifest format",
+                code="pdf.invalid_manifest",
+                details={"error": str(exc)},
+            )
+        )
+    if not isinstance(manifest, list):
+        return fail(
+            ValidationAppError(
+                message="Manifest must be a list", code="pdf.invalid_manifest"
+            )
+        )
+    payload = {"manifest": manifest, "output_name": request.form.get("output_name")}
+    try:
+        return parse_model(MergePayload, payload)
+    except ValidationError as exc:
+        return fail(
+            ValidationAppError(
+                message=str(exc),
+                code="pdf.invalid_manifest",
+                details=getattr(exc, "details", None),
+            )
+        )
 
+
+def _collect_uploads(manifest: Iterable[MergeItem]) -> list:
     uploads = []
     for item in manifest:
-        field = item.get("field") if isinstance(item, dict) else None
-        if not field:
-            return jsonify({"error": "Manifest entry missing field"}), 400
-        file = request.files.get(field)
+        file = request.files.get(item.field)
         if file is None:
-            return jsonify({"error": f"Missing file for field {field}"}), 400
+            raise ValidationAppError(
+                message=f"Missing file for field {item.field}", code="pdf.missing_file"
+            )
         uploads.append(file)
+    return uploads
+
+
+@api_bp.post("/merge")
+def merge() -> Response:
+    manifest = _load_manifest()
+    if isinstance(manifest, Response):
+        return manifest
 
     try:
+        uploads = _collect_uploads(manifest.manifest)
         enforce_limits(uploads, _merge_limit())
         validate_mime(uploads, {"application/pdf"})
-    except (ValidationError, ValueError) as exc:
-        return jsonify({"error": str(exc)}), 400
+    except ValidationAppError as exc:
+        return fail(exc)
+    except ValidationError as exc:
+        return fail(
+            ValidationAppError(
+                message=str(exc),
+                code="pdf.invalid_upload",
+                details=getattr(exc, "details", None),
+            )
+        )
 
     specs: list[MergeSpec] = []
-    for item, file in zip(manifest, uploads):
-        pages = str(item.get("pages", "all"))
-        filename = item.get("filename") or file.filename or file.name or "document.pdf"
+    for item, file in zip(manifest.manifest, uploads, strict=False):
+        filename = item.filename or file.filename or file.name or "document.pdf"
         data = file.read()
-        specs.append(MergeSpec(data=data, page_range=pages, filename=filename))
+        specs.append(MergeSpec(data=data, page_range=item.pages, filename=filename))
 
     try:
         merged = merge_pdfs(specs)
     except PageRangeError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return fail(ValidationAppError(message=str(exc), code="pdf.invalid_page_range"))
 
-    output_name = request.form.get("output_name") or "merged.pdf"
+    output_name = manifest.output_name or "merged.pdf"
     safe_name = secure_filename(output_name)
     if not safe_name.lower().endswith(".pdf"):
         safe_name = f"{safe_name}.pdf"
 
-    buf = BytesIO(merged)
-    buf.seek(0)
-    return send_file(
-        buf,
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name=safe_name,
-        max_age=0,
-    )
+    payload = {
+        "filename": safe_name,
+        "pdf_base64": base64.b64encode(merged).decode("ascii"),
+        "total_files": len(specs),
+    }
+    return ok(payload)
 
 
-@bp.post("/api/v1/split")
+@api_bp.post("/split")
 def split() -> Response:
     file = request.files.get("file")
     if not file:
-        return jsonify({"error": "No file provided"}), 400
+        return fail(
+            ValidationAppError(message="No file provided", code="pdf.file_missing")
+        )
     try:
         enforce_limits([file], _split_limit())
         validate_mime([file], {"application/pdf"})
-    except (ValidationError, ValueError) as exc:
-        return jsonify({"error": str(exc)}), 400
+    except ValidationError as exc:
+        return fail(
+            ValidationAppError(
+                message=str(exc),
+                code="pdf.invalid_upload",
+                details=getattr(exc, "details", None),
+            )
+        )
 
     parts = split_pdf(file.read())
-    payload = [base64.b64encode(part).decode("ascii") for part in parts]
-    return jsonify({"pages": payload})
+    payload = {
+        "pages": [base64.b64encode(part).decode("ascii") for part in parts],
+        "page_count": len(parts),
+    }
+    return ok(payload)
 
 
-@bp.post("/api/v1/metadata")
+@api_bp.post("/metadata")
 def metadata() -> Response:
     file = request.files.get("file")
     if not file:
-        return jsonify({"error": "No file provided"}), 400
+        return fail(
+            ValidationAppError(message="No file provided", code="pdf.file_missing")
+        )
 
     merge_limit = _merge_limit()
     metadata_limit = FileLimit(max_files=1, max_size=merge_limit.max_size)
@@ -142,12 +225,40 @@ def metadata() -> Response:
     try:
         enforce_limits([file], metadata_limit)
         validate_mime([file], {"application/pdf"})
-    except (ValidationError, ValueError) as exc:
-        return jsonify({"error": str(exc)}), 400
+    except ValidationError as exc:
+        return fail(
+            ValidationAppError(
+                message=str(exc),
+                code="pdf.invalid_upload",
+                details=getattr(exc, "details", None),
+            )
+        )
 
     try:
         info = pdf_metadata(file.read())
-    except Exception:
-        return jsonify({"error": "Unable to read PDF"}), 400
+    except Exception:  # pragma: no cover - defensive
+        return fail(AppError(code="pdf.metadata_error", message="Unable to read PDF"))
 
-    return jsonify({"pages": info.pages, "size_bytes": info.size_bytes})
+    payload = {"pages": info.pages, "size_bytes": info.size_bytes}
+    return ok(payload)
+
+
+@legacy_bp.post("/merge")
+def legacy_merge() -> Response:
+    return merge()
+
+
+@legacy_bp.post("/split")
+def legacy_split() -> Response:
+    return split()
+
+
+@legacy_bp.post("/metadata")
+def legacy_metadata() -> Response:
+    return metadata()
+
+
+blueprints = [ui_bp, api_bp, legacy_bp]
+
+
+__all__ = ["blueprints", "merge", "split", "metadata", "index"]

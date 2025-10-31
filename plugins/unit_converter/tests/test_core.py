@@ -1,7 +1,6 @@
 from plugins.unit_converter.core import (
     BadInputError,
     DimensionMismatchError,
-    InvalidUnitError,
     convert,
     convert_expression,
     list_families,

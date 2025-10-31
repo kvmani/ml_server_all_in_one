@@ -1,0 +1,466 @@
+openapi: 3.1.0
+info:
+  title: ML Server AIO Backend API
+  version: 1.0.0
+  description: |
+    Unified JSON API for all plugins under `/api/<plugin>/<action>`.
+servers:
+  - url: http://localhost:5000
+paths:
+  /api/pdf_tools/merge:
+    post:
+      summary: Merge uploaded PDFs into a single document
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                manifest:
+                  type: string
+                  description: JSON array describing uploaded files and page ranges.
+                output_name:
+                  type: string
+                file-0:
+                  type: string
+                  format: binary
+              required:
+                - manifest
+      responses:
+        '200':
+          description: Merged PDF returned as base64 data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessPdfMerge'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /api/pdf_tools/split:
+    post:
+      summary: Split a PDF into individual pages.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+                - file
+      responses:
+        '200':
+          description: Pages returned as base64 strings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessPdfSplit'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /api/pdf_tools/metadata:
+    post:
+      summary: Inspect uploaded PDF metadata.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+                - file
+      responses:
+        '200':
+          description: Basic metadata about the PDF.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessPdfMetadata'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /api/unit_converter/families:
+    get:
+      summary: List unit families and available units.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessUnitFamilies'
+  /api/unit_converter/units/{family}:
+    get:
+      summary: List units within a family.
+      parameters:
+        - in: path
+          name: family
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessUnitList'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /api/unit_converter/convert:
+    post:
+      summary: Convert between two units.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnitConvertRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessUnitConversion'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/unit_converter/expressions:
+    post:
+      summary: Evaluate a unit expression.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnitExpressionRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessUnitConversion'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /api/hydride_segmentation/segment:
+    post:
+      summary: Segment a hydride micrograph.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+              required:
+                - image
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessHydrideSegment'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /api/hydride_segmentation/warmup:
+    get:
+      summary: Warm up the segmentation service.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessWarmup'
+  /api/tabular_ml/datasets:
+    post:
+      summary: Register a new tabular dataset.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                dataset:
+                  type: string
+                  format: binary
+              required:
+                - dataset
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessDatasetProfile'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /api/tabular_ml/datasets/{dataset_id}/train:
+    post:
+      summary: Train a model on the dataset.
+      parameters:
+        - in: path
+          name: dataset_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessTrain'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /api/tabular_ml/datasets/{dataset_id}/predict:
+    post:
+      summary: Predict using the trained model.
+      parameters:
+        - in: path
+          name: dataset_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PredictRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessPrediction'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/ValidationError'
+components:
+  schemas:
+    SuccessEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+    ErrorEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+    SuccessPdfMerge:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                filename:
+                  type: string
+                pdf_base64:
+                  type: string
+                total_files:
+                  type: integer
+    SuccessPdfSplit:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                pages:
+                  type: array
+                  items:
+                    type: string
+                page_count:
+                  type: integer
+    SuccessPdfMetadata:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                pages:
+                  type: integer
+                size_bytes:
+                  type: integer
+    UnitConvertRequest:
+      type: object
+      properties:
+        value:
+          oneOf:
+            - type: string
+            - type: number
+        from_unit:
+          type: string
+        to_unit:
+          type: string
+        mode:
+          type: string
+          enum: [absolute, relative]
+      required: [value, from_unit, to_unit]
+    UnitExpressionRequest:
+      type: object
+      properties:
+        expression:
+          type: string
+        target:
+          type: string
+      required: [expression]
+    SuccessUnitConversion:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                value:
+                  type: number
+                unit:
+                  type: string
+                formatted:
+                  type: string
+    SuccessUnitFamilies:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                families:
+                  type: array
+                  items:
+                    type: string
+                units:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+    SuccessUnitList:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                family:
+                  type: string
+                units:
+                  type: array
+                  items:
+                    type: string
+    SuccessHydrideSegment:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                metrics:
+                  type: object
+                  additionalProperties: true
+                analysis:
+                  type: object
+                  additionalProperties: true
+                parameters:
+                  type: object
+    SuccessWarmup:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [ready]
+    SuccessDatasetProfile:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                dataset_id:
+                  type: string
+                columns:
+                  type: array
+                  items:
+                    type: string
+    TrainRequest:
+      type: object
+      properties:
+        target:
+          type: string
+        algorithm:
+          type: string
+        hyperparameters:
+          type: object
+      required: [target]
+    SuccessTrain:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              additionalProperties: true
+    PredictRequest:
+      type: object
+      properties:
+        features:
+          type: object
+      required: [features]
+    SuccessPrediction:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              additionalProperties: true
+  responses:
+    ValidationError:
+      description: Invalid user input.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'

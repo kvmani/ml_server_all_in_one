@@ -33,6 +33,15 @@ The log never persists to disk and clears with a single click, keeping the UX tr
 
 Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and architecture notes.
 
+## API overview
+
+- All plugin endpoints live under `/api/<plugin>/<action>`.
+- Responses follow a shared envelope:
+  - Success → `{ "success": true, "data": ... }`
+  - Errors → `{ "success": false, "error": { "code": "<id>", "message": "...", "details": { ... } } }`
+- Full request/response contracts are documented in [`docs/api/openapi.yaml`](docs/api/openapi.yaml).
+- Legacy routes under `/<plugin>/api/v1/...` still function but are considered deprecated.
+
 ## Getting started
 
 1. **Create an isolated environment**

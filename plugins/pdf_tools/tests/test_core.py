@@ -3,7 +3,13 @@ from io import BytesIO
 import pytest
 from PyPDF2 import PdfWriter
 
-from plugins.pdf_tools.core import MergeSpec, PageRangeError, merge_pdfs, parse_page_range, split_pdf
+from plugins.pdf_tools.core import (
+    MergeSpec,
+    PageRangeError,
+    merge_pdfs,
+    parse_page_range,
+    split_pdf,
+)
 
 
 def _blank_pdf(pages: int) -> bytes:

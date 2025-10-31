@@ -1,5 +1,5 @@
 from common.forms import get_bool, get_float, get_int
-from common.validate import ValidationError
+from common.validation import ValidationError
 
 
 def test_get_float_with_defaults_and_bounds():

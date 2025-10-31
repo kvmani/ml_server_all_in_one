@@ -20,6 +20,10 @@ def _iter_blueprints(package: str = "plugins") -> Iterable:
             continue
         dotted = f"{package}.{module_info.name}.api"
         module = importlib.import_module(dotted)
+        module_blueprints = getattr(module, "blueprints", None)
+        if module_blueprints:
+            blueprints.extend(module_blueprints)
+            continue
         blueprint = getattr(module, "bp", None)
         if blueprint is not None:
             blueprints.append(blueprint)

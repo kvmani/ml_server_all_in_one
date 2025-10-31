@@ -14,7 +14,11 @@ from werkzeug.serving import make_server
 from app import create_app
 
 pytest.importorskip("playwright.sync_api")
-from playwright.sync_api import Browser, Page, sync_playwright  # noqa: E402  (import after skip)
+from playwright.sync_api import (
+    Browser,
+    Page,
+    sync_playwright,
+)  # noqa: E402  (import after skip)
 
 pytestmark = pytest.mark.playwright
 
@@ -76,7 +80,9 @@ def test_home_cards_have_gradient_icons(page: Page, live_server: str) -> None:
     assert "linear-gradient" in background_image.lower()
 
 
-def test_pdf_tool_shows_first_page_thumbnail(page: Page, live_server: str, tmp_path: Path) -> None:
+def test_pdf_tool_shows_first_page_thumbnail(
+    page: Page, live_server: str, tmp_path: Path
+) -> None:
     pdf_path = _create_pdf(tmp_path / "sample.pdf")
     page.goto(f"{live_server}/pdf_tools/", wait_until="networkidle")
     page.set_input_files("#merge-picker", str(pdf_path))
@@ -90,7 +96,9 @@ def test_pdf_tool_shows_first_page_thumbnail(page: Page, live_server: str, tmp_p
     assert "Hide" in preview_button.inner_text()
 
 
-def test_tabular_training_supports_algorithm_selection(page: Page, live_server: str) -> None:
+def test_tabular_training_supports_algorithm_selection(
+    page: Page, live_server: str
+) -> None:
     csv_buffer = io.StringIO()
     csv_buffer.write("feat1,feat2,target\n")
     for value in range(1, 9):

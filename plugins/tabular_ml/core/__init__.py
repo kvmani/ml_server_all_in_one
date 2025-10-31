@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
-from dataclasses import dataclass
-from io import BytesIO, StringIO
 import csv
 import math
 import threading
 import uuid
+from collections import OrderedDict
+from dataclasses import dataclass
+from io import BytesIO, StringIO
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
@@ -23,7 +23,6 @@ from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import accuracy_score, mean_squared_error
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-
 
 NumericSeries = pd.Series
 
@@ -171,7 +170,12 @@ def build_profile(dataset_id: str, df: pd.DataFrame) -> DatasetProfile:
         if column in numeric_cols:
             numeric_series = series.dropna().astype(float)
             if numeric_series.empty:
-                stats[column] = {"mean": math.nan, "std": math.nan, "min": math.nan, "max": math.nan}
+                stats[column] = {
+                    "mean": math.nan,
+                    "std": math.nan,
+                    "min": math.nan,
+                    "max": math.nan,
+                }
             else:
                 stats[column] = {
                     "mean": float(numeric_series.mean()),
@@ -199,7 +203,14 @@ def drop_dataset(dataset_id: str) -> None:
     _BATCH_PREDICTIONS.pop(dataset_id, None)
 
 
-def scatter_points(dataset_id: str, x: str, y: str, color: Optional[str] = None, *, max_points: int = 400) -> Dict[str, object]:
+def scatter_points(
+    dataset_id: str,
+    x: str,
+    y: str,
+    color: Optional[str] = None,
+    *,
+    max_points: int = 400,
+) -> Dict[str, object]:
     df = get_dataset(dataset_id)
     for column in (x, y):
         if column not in df.columns:
@@ -257,7 +268,9 @@ def histogram_points(
             raise TabularError("Histogram range minimum must be less than maximum")
         range_tuple = (float(start), float(end))
 
-    counts, edges = np.histogram(series.to_numpy(), bins=bins, density=bool(density), range=range_tuple)
+    counts, edges = np.histogram(
+        series.to_numpy(), bins=bins, density=bool(density), range=range_tuple
+    )
     centres = (edges[:-1] + edges[1:]) / 2
     return {
         "column": column,
@@ -269,12 +282,16 @@ def histogram_points(
     }
 
 
-def _numeric_columns(df: pd.DataFrame, columns: Optional[Sequence[str]] = None) -> List[str]:
+def _numeric_columns(
+    df: pd.DataFrame, columns: Optional[Sequence[str]] = None
+) -> List[str]:
     if columns:
         missing = [column for column in columns if column not in df.columns]
         if missing:
             raise TabularError("Columns not found: " + ", ".join(missing))
-        numeric_columns = [column for column in columns if pd.api.types.is_numeric_dtype(df[column])]
+        numeric_columns = [
+            column for column in columns if pd.api.types.is_numeric_dtype(df[column])
+        ]
         if not numeric_columns:
             raise TabularError("Selected columns do not contain numeric values")
         return numeric_columns
@@ -326,7 +343,9 @@ def remove_outliers(
     if not report.inspected_columns:
         return build_profile(dataset_id, df)
 
-    numeric_df = df[list(report.inspected_columns)].apply(pd.to_numeric, errors="coerce")
+    numeric_df = df[list(report.inspected_columns)].apply(
+        pd.to_numeric, errors="coerce"
+    )
     z_scores = pd.DataFrame(index=df.index)
     for column in report.inspected_columns:
         series = numeric_df[column]
@@ -348,12 +367,20 @@ SUPPORTED_FILTER_OPERATORS = {
     "gte": lambda series, value: series >= value,
     "lt": lambda series, value: series < value,
     "lte": lambda series, value: series <= value,
-    "contains": lambda series, value: series.astype(str).str.contains(str(value), na=False),
-    "in": lambda series, value: series.isin(value if isinstance(value, Iterable) and not isinstance(value, (str, bytes)) else [value]),
+    "contains": lambda series, value: series.astype(str).str.contains(
+        str(value), na=False
+    ),
+    "in": lambda series, value: series.isin(
+        value
+        if isinstance(value, Iterable) and not isinstance(value, (str, bytes))
+        else [value]
+    ),
 }
 
 
-def filter_rows(dataset_id: str, rules: Sequence[Mapping[str, object]]) -> Tuple[DatasetProfile, int]:
+def filter_rows(
+    dataset_id: str, rules: Sequence[Mapping[str, object]]
+) -> Tuple[DatasetProfile, int]:
     df = get_dataset(dataset_id)
     if not rules:
         raise TabularError("Provide at least one filter rule")
@@ -398,7 +425,9 @@ def _algorithm_specs() -> Dict[str, Dict[str, object]]:
             "tasks": {
                 "classification": {
                     "use_scaler": True,
-                    "builder": lambda: LogisticRegression(max_iter=1000, solver="lbfgs"),
+                    "builder": lambda: LogisticRegression(
+                        max_iter=1000, solver="lbfgs"
+                    ),
                     "hyperparameters": {
                         "max_iter": {
                             "type": "int",
@@ -450,7 +479,9 @@ def _algorithm_specs() -> Dict[str, Dict[str, object]]:
             "tasks": {
                 "classification": {
                     "use_scaler": False,
-                    "builder": lambda: RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1),
+                    "builder": lambda: RandomForestClassifier(
+                        n_estimators=200, random_state=42, n_jobs=-1
+                    ),
                     "hyperparameters": {
                         "n_estimators": {
                             "type": "int",
@@ -476,7 +507,9 @@ def _algorithm_specs() -> Dict[str, Dict[str, object]]:
                 },
                 "regression": {
                     "use_scaler": False,
-                    "builder": lambda: RandomForestRegressor(n_estimators=300, random_state=42, n_jobs=-1),
+                    "builder": lambda: RandomForestRegressor(
+                        n_estimators=300, random_state=42, n_jobs=-1
+                    ),
                     "hyperparameters": {
                         "n_estimators": {
                             "type": "int",
@@ -584,7 +617,9 @@ def algorithm_metadata() -> Dict[str, object]:
         for entry in entries:
             name = entry["name"]
             if name in merged:
-                merged[name]["tasks"] = sorted(set(merged[name]["tasks"] + entry["tasks"]))
+                merged[name]["tasks"] = sorted(
+                    set(merged[name]["tasks"] + entry["tasks"])
+                )
             else:
                 merged[name] = entry
         metadata[algorithm] = {
@@ -614,7 +649,9 @@ def _apply_hyperparameters(
             try:
                 value = int(float(value))
             except (TypeError, ValueError):
-                raise TabularError(f"Hyperparameter '{key}' must be an integer") from None
+                raise TabularError(
+                    f"Hyperparameter '{key}' must be an integer"
+                ) from None
         elif param_type == "float":
             try:
                 value = float(value)
@@ -634,8 +671,9 @@ def _apply_hyperparameters(
         elif param_type == "select":
             choices = definition.get("choices", [])
             if value not in choices:
+                choices_desc = ", ".join(map(str, choices))
                 raise TabularError(
-                    f"Hyperparameter '{key}' must be one of: {', '.join(map(str, choices))}"
+                    f"Hyperparameter '{key}' must be one of: {choices_desc}"
                 )
         if definition.get("nullable") and value in ("", None):
             resolved[key] = None
@@ -681,7 +719,9 @@ def _resolve_algorithm(task: str, requested: str) -> Tuple[object, bool, str, st
     model = builder()
     label = specs[normalized]["label"]
     if normalized == "linear_model":
-        label = "Logistic regression" if task == "classification" else "Ridge regression"
+        label = (
+            "Logistic regression" if task == "classification" else "Ridge regression"
+        )
     return model, task_spec["use_scaler"], normalized, label
 
 
@@ -693,7 +733,9 @@ def train_on_dataset(
     hyperparameters: Optional[Mapping[str, object]] = None,
 ) -> TrainingResult:
     df = get_dataset(dataset_id)
-    result = train_model(df, target, algorithm=algorithm, hyperparameters=hyperparameters)
+    result = train_model(
+        df, target, algorithm=algorithm, hyperparameters=hyperparameters
+    )
     _LATEST_RESULTS[dataset_id] = result
     # Keep only a small number of cached results
     while len(_LATEST_RESULTS) > _STORE.max_items:
@@ -733,7 +775,9 @@ def train_model(
     else:
         X_train, X_test, y_train, y_test = X, X, y, y
 
-    estimator, use_scaler, resolved_algorithm, algorithm_label = _resolve_algorithm(task, algorithm)
+    estimator, use_scaler, resolved_algorithm, algorithm_label = _resolve_algorithm(
+        task, algorithm
+    )
     _apply_hyperparameters(estimator, resolved_algorithm, task, hyperparameters)
 
     scaler: Optional[StandardScaler] = None
@@ -756,14 +800,20 @@ def train_model(
             coef = np.abs(np.asarray(estimator.coef_))
             importance_values = coef.mean(axis=0) if coef.ndim > 1 else coef
         else:
-            importance_values = getattr(estimator, "feature_importances_", np.zeros(len(X.columns)))
+            importance_values = getattr(
+                estimator, "feature_importances_", np.zeros(len(X.columns))
+            )
         proba_values: Optional[np.ndarray] = None
         if hasattr(estimator, "predict_proba"):
             proba_values = estimator.predict_proba(X_test_data)
             if proba_values.size:
                 evaluation_columns.append("confidence")
-        classes: Optional[List[object]] = list(estimator.classes_) if proba_values is not None else None
-        for position, (idx, predicted) in enumerate(zip(y_test.index, preds)):
+        classes: Optional[List[object]] = (
+            list(estimator.classes_) if proba_values is not None else None
+        )
+        for position, (idx, predicted) in enumerate(
+            zip(y_test.index, preds, strict=False)
+        ):
             actual_value = y_test.iloc[position]
             row: Dict[str, object] = {
                 "row_index": _row_identifier(idx),
@@ -787,8 +837,12 @@ def train_model(
             coef = np.abs(np.asarray(estimator.coef_))
             importance_values = coef
         else:
-            importance_values = getattr(estimator, "feature_importances_", np.zeros(len(X.columns)))
-        for idx, predicted, actual_value in zip(y_test.index, preds, y_test):
+            importance_values = getattr(
+                estimator, "feature_importances_", np.zeros(len(X.columns))
+            )
+        for idx, predicted, actual_value in zip(
+            y_test.index, preds, y_test, strict=False
+        ):
             predicted_value = float(predicted)
             actual_scalar = float(actual_value)
             row = {
@@ -804,9 +858,13 @@ def train_model(
         importance_array = importance_array.flatten()
     if importance_array.shape[0] != len(X.columns):
         importance_array = np.resize(importance_array, len(X.columns))
-    importance = {column: float(importance_array[idx]) for idx, column in enumerate(X.columns)}
+    importance = {
+        column: float(importance_array[idx]) for idx, column in enumerate(X.columns)
+    }
     # Sort by magnitude descending
-    importance = dict(sorted(importance.items(), key=lambda item: item[1], reverse=True))
+    importance = dict(
+        sorted(importance.items(), key=lambda item: item[1], reverse=True)
+    )
     return TrainingResult(
         task=task,
         algorithm=resolved_algorithm,
@@ -831,7 +889,9 @@ def export_predictions_csv(result: TrainingResult) -> bytes:
     writer = csv.DictWriter(buffer, fieldnames=result.evaluation_columns)
     writer.writeheader()
     for record in result.evaluation:
-        writer.writerow({column: record.get(column, "") for column in result.evaluation_columns})
+        writer.writerow(
+            {column: record.get(column, "") for column in result.evaluation_columns}
+        )
     return buffer.getvalue().encode("utf-8")
 
 
@@ -853,7 +913,9 @@ def _normalise_feature_value(value: object, column: str) -> float:
     return numeric
 
 
-def _build_feature_matrix(result: TrainingResult, rows: Iterable[Mapping[str, object]]) -> np.ndarray:
+def _build_feature_matrix(
+    result: TrainingResult, rows: Iterable[Mapping[str, object]]
+) -> np.ndarray:
     if not result.feature_columns:
         raise TabularError("Model does not expose numeric features for inference")
     matrix: List[List[float]] = []
@@ -870,7 +932,9 @@ def _build_feature_matrix(result: TrainingResult, rows: Iterable[Mapping[str, ob
     return feature_array
 
 
-def predict_single(dataset_id: str, features: Mapping[str, object]) -> Dict[str, object]:
+def predict_single(
+    dataset_id: str, features: Mapping[str, object]
+) -> Dict[str, object]:
     result = latest_result(dataset_id)
     if result is None:
         raise ModelNotReadyError("Train a model before running inference")
@@ -889,7 +953,7 @@ def predict_single(dataset_id: str, features: Mapping[str, object]) -> Dict[str,
             if classes is not None:
                 probabilities = {
                     str(_to_python(cls)): float(prob)
-                    for cls, prob in zip(classes, proba[0])
+                    for cls, prob in zip(classes, proba[0], strict=False)
                 }
                 payload["probabilities"] = probabilities
                 payload["confidence"] = float(max(probabilities.values()))
@@ -905,7 +969,9 @@ def predict_batch(dataset_id: str, data: bytes) -> BatchPredictionResult:
     if frame.empty:
         raise TabularError("Batch CSV must contain at least one row")
 
-    missing = [column for column in result.feature_columns if column not in frame.columns]
+    missing = [
+        column for column in result.feature_columns if column not in frame.columns
+    ]
     if missing:
         raise TabularError(
             "Batch CSV is missing required feature columns: " + ", ".join(missing)

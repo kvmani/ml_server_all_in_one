@@ -1,5 +1,4 @@
 import numpy as np
-import numpy as np
 
 from plugins.hydride_segmentation.core import analyze_mask, compute_metrics
 
