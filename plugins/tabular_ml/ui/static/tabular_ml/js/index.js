@@ -44,6 +44,30 @@ const batchResults = document.getElementById("batch-results");
 const batchSummary = document.getElementById("batch-summary");
 const batchTable = document.getElementById("batch-table");
 const batchDownload = document.getElementById("batch-download");
+const histogramForm = document.getElementById("histogram-form");
+const histogramColumn = document.getElementById("histogram-column");
+const histogramPlot = document.getElementById("histogram-plot");
+const histogramCaption = document.getElementById("histogram-caption");
+const histogramReset = document.getElementById("histogram-reset");
+const preprocessSection = document.getElementById("preprocess-section");
+const outlierForm = document.getElementById("outlier-form");
+const outlierColumns = document.getElementById("outlier-columns");
+const outlierThreshold = document.getElementById("outlier-threshold");
+const detectOutliersButton = document.getElementById("detect-outliers");
+const removeOutliersButton = document.getElementById("remove-outliers");
+const outlierSummary = document.getElementById("outlier-summary");
+const filterForm = document.getElementById("filter-form");
+const filterColumn = document.getElementById("filter-column");
+const filterOperator = document.getElementById("filter-operator");
+const filterValue = document.getElementById("filter-value");
+const filterSummary = document.getElementById("filter-summary");
+const filterReset = document.getElementById("filter-reset");
+const scatterSettingsButton = document.getElementById("scatter-settings");
+const histogramSettingsButton = document.getElementById("histogram-settings");
+const trainingSettingsButton = document.getElementById("training-settings");
+const settingsDialog = document.getElementById("settings-dialog");
+const settingsContent = document.getElementById("settings-content");
+const settingsTitle = document.getElementById("settings-title");
 
 let currentDatasetId = null;
 let currentColumns = [];
@@ -51,10 +75,21 @@ let currentNumericColumns = [];
 let currentPredictionColumns = [];
 let currentFeatureColumns = [];
 let currentTargetColumn = "";
+let currentRowCount = 0;
 let hasPredictions = false;
 let hasBatchPredictions = false;
 let inferenceController = null;
 let batchController = null;
+let histogramController = null;
+let filterController = null;
+let scatterController = null;
+let outlierController = null;
+const scatterSettingsState = { maxPoints: 400, pointSize: 4 };
+const histogramSettingsState = { bins: 30, density: false, range: null };
+const trainingSettingsState = {};
+let algorithmMetadataCache = {};
+let lastHistogramRequest = null;
+let activeSettingsTarget = null;
 
 function titleCase(text) {
   if (!text) return "";
@@ -67,18 +102,36 @@ function clearScatter() {
   scatterCaption.textContent = "";
 }
 
+function clearHistogram() {
+  if (!histogramPlot || !histogramCaption) return;
+  histogramPlot.innerHTML = "";
+  histogramPlot.setAttribute("hidden", "hidden");
+  histogramCaption.textContent = "";
+}
+
 function setFormsEnabled(enabled) {
-  const controls = [scatterForm, trainForm];
+  const controls = [scatterForm, trainForm, histogramForm, filterForm];
   controls.forEach((form) => {
     Array.from(form.elements).forEach((el) => {
       el.disabled = !enabled && el.type !== "reset";
     });
   });
+  if (outlierForm) {
+    Array.from(outlierForm.elements).forEach((el) => {
+      el.disabled = !enabled && el.type !== "reset";
+    });
+  }
+  [detectOutliersButton, removeOutliersButton, scatterSettingsButton, histogramSettingsButton, trainingSettingsButton].forEach(
+    (button) => {
+      if (button) button.disabled = !enabled;
+    },
+  );
   if (!enabled) {
     results.hidden = true;
     metricsEl.innerHTML = "";
     importanceEl.innerHTML = "";
     clearScatter();
+    clearHistogram();
     if (predictionTable) {
       predictionTable.innerHTML = "";
     }
@@ -89,6 +142,17 @@ function setFormsEnabled(enabled) {
       algorithmBadge.hidden = true;
     }
     resetInference();
+    if (outlierSummary) {
+      outlierSummary.hidden = true;
+      outlierSummary.textContent = "";
+    }
+    if (filterSummary) {
+      filterSummary.textContent = "";
+    }
+    if (preprocessSection) {
+      preprocessSection.hidden = true;
+    }
+    currentRowCount = 0;
   }
 }
 
@@ -479,10 +543,55 @@ function renderColumns(columns, stats) {
   });
 }
 
+function populatePreprocessSelectors(columns, numericColumns) {
+  if (outlierColumns) {
+    outlierColumns.innerHTML = "";
+    numericColumns.forEach((name) => {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      outlierColumns.appendChild(option);
+    });
+  }
+  if (outlierSummary) {
+    outlierSummary.hidden = true;
+    outlierSummary.textContent = "";
+  }
+  if (filterColumn) {
+    filterColumn.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Select column";
+    filterColumn.appendChild(placeholder);
+    columns.forEach((col) => {
+      const option = document.createElement("option");
+      option.value = col.name;
+      option.textContent = col.name;
+      filterColumn.appendChild(option);
+    });
+  }
+  if (filterValue) {
+    filterValue.value = "";
+  }
+  if (filterSummary) {
+    filterSummary.textContent = "";
+  }
+  if (preprocessSection) {
+    preprocessSection.hidden = !columns.length;
+  }
+}
+
 function populateSelectors(columns, numericColumns) {
   scatterX.innerHTML = "";
   scatterY.innerHTML = "";
   scatterColor.innerHTML = "";
+  if (histogramColumn) {
+    histogramColumn.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Select column";
+    histogramColumn.appendChild(placeholder);
+  }
   numericColumns.forEach((name) => {
     const optionX = document.createElement("option");
     optionX.value = name;
@@ -490,6 +599,12 @@ function populateSelectors(columns, numericColumns) {
     scatterX.appendChild(optionX);
     const optionY = optionX.cloneNode(true);
     scatterY.appendChild(optionY);
+    if (histogramColumn) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      histogramColumn.appendChild(option);
+    }
   });
   scatterColor.appendChild(new Option("None", ""));
   columns.forEach((col) => {
@@ -504,6 +619,7 @@ function populateSelectors(columns, numericColumns) {
   if (scatterY.options.length > 1) {
     scatterY.selectedIndex = 1;
   }
+  populatePreprocessSelectors(columns, numericColumns);
 }
 
 function renderScatter(data) {
@@ -561,7 +677,10 @@ function renderScatter(data) {
     const circle = document.createElementNS(svgNS, "circle");
     circle.setAttribute("cx", cx);
     circle.setAttribute("cy", cy);
-    circle.setAttribute("r", "4");
+    const radius = Number.isFinite(Number(scatterSettingsState.pointSize))
+      ? Number(scatterSettingsState.pointSize)
+      : 4;
+    circle.setAttribute("r", Math.max(2, radius).toString());
     let fill = "var(--accent-500, #64b5f6)";
     if (data.color) {
       const colourValue = data.color[index];
@@ -592,6 +711,514 @@ function renderScatter(data) {
   scatterCaption.textContent = `${data.x_label} vs ${data.y_label}${data.color_label ? ` · colour: ${data.color_label}` : ""}`;
 }
 
+function renderHistogram(data) {
+  if (!histogramPlot || !histogramCaption) {
+    return;
+  }
+  clearHistogram();
+  const counts = Array.isArray(data?.counts) ? data.counts.map(Number) : [];
+  if (!counts.length) {
+    histogramCaption.textContent = "No histogram data available.";
+    return;
+  }
+  const edges = Array.isArray(data.edges) ? data.edges.map(Number) : [];
+  const width = 480;
+  const height = 320;
+  const margin = { top: 20, right: 20, bottom: 45, left: 55 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const svgNS = "http://www.w3.org/2000/svg";
+  const maxCount = Math.max(...counts, 0);
+  const axes = document.createElementNS(svgNS, "g");
+  axes.setAttribute("transform", `translate(${margin.left}, ${margin.top})`);
+  const xAxis = document.createElementNS(svgNS, "line");
+  xAxis.setAttribute("x1", "0");
+  xAxis.setAttribute("y1", plotHeight);
+  xAxis.setAttribute("x2", plotWidth);
+  xAxis.setAttribute("y2", plotHeight);
+  xAxis.setAttribute("class", "scatter-axis");
+  axes.appendChild(xAxis);
+  const yAxis = document.createElementNS(svgNS, "line");
+  yAxis.setAttribute("x1", "0");
+  yAxis.setAttribute("y1", "0");
+  yAxis.setAttribute("x2", "0");
+  yAxis.setAttribute("y2", plotHeight);
+  yAxis.setAttribute("class", "scatter-axis");
+  axes.appendChild(yAxis);
+
+  const bars = document.createElementNS(svgNS, "g");
+  bars.setAttribute("transform", `translate(${margin.left}, ${margin.top})`);
+  const barWidth = counts.length ? plotWidth / counts.length : plotWidth;
+  counts.forEach((count, index) => {
+    const magnitude = Number.isFinite(count) ? count : 0;
+    const barHeight = maxCount === 0 ? 0 : (magnitude / maxCount) * plotHeight;
+    const rect = document.createElementNS(svgNS, "rect");
+    const x = index * barWidth + barWidth * 0.1;
+    rect.setAttribute("x", x.toString());
+    rect.setAttribute("y", (plotHeight - barHeight).toString());
+    rect.setAttribute("width", (barWidth * 0.8).toString());
+    rect.setAttribute("height", barHeight.toString());
+    rect.setAttribute("fill", "var(--accent-500, #64b5f6)");
+    rect.setAttribute("fill-opacity", "0.85");
+    bars.appendChild(rect);
+  });
+
+  histogramPlot.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  histogramPlot.appendChild(axes);
+  histogramPlot.appendChild(bars);
+
+  if (edges.length >= 2) {
+    const labelsGroup = document.createElementNS(svgNS, "g");
+    labelsGroup.setAttribute("transform", `translate(${margin.left}, ${margin.top + plotHeight + 20})`);
+    const firstLabel = document.createElementNS(svgNS, "text");
+    firstLabel.setAttribute("x", "0");
+    firstLabel.setAttribute("y", "0");
+    firstLabel.setAttribute("fill", "currentColor");
+    firstLabel.setAttribute("font-size", "12");
+    firstLabel.textContent = edges[0].toPrecision(4);
+    labelsGroup.appendChild(firstLabel);
+    const lastLabel = document.createElementNS(svgNS, "text");
+    lastLabel.setAttribute("x", plotWidth.toString());
+    lastLabel.setAttribute("y", "0");
+    lastLabel.setAttribute("fill", "currentColor");
+    lastLabel.setAttribute("font-size", "12");
+    lastLabel.setAttribute("text-anchor", "end");
+    lastLabel.textContent = edges[edges.length - 1].toPrecision(4);
+    labelsGroup.appendChild(lastLabel);
+    histogramPlot.appendChild(labelsGroup);
+  }
+
+  histogramPlot.removeAttribute("hidden");
+  const suffix = data.density ? "density" : "counts";
+  histogramCaption.textContent = `Histogram of ${data.column} (${suffix})`;
+  lastHistogramRequest = { column: data.column };
+}
+
+function renderOutlierSummary(report) {
+  if (!outlierSummary) {
+    return;
+  }
+  outlierSummary.innerHTML = "";
+  const total = Number(report.total_outliers || 0);
+  const inspected = Array.isArray(report.inspected_columns) ? report.inspected_columns : [];
+  const indices = Array.isArray(report.sample_indices) ? report.sample_indices : [];
+  const summary = document.createElement("p");
+  summary.className = "tabular-outliers__stats";
+  summary.textContent =
+    total > 0
+      ? `Detected ${total} potential outliers across ${inspected.length} numeric column${inspected.length === 1 ? "" : "s"}.`
+      : "No outliers detected for the selected columns.";
+  outlierSummary.appendChild(summary);
+  if (inspected.length) {
+    const inspectedText = document.createElement("p");
+    inspectedText.className = "form-field__hint";
+    inspectedText.textContent = `Inspected columns: ${inspected.join(", ")}`;
+    outlierSummary.appendChild(inspectedText);
+  }
+  if (indices.length) {
+    const indicesText = document.createElement("p");
+    indicesText.className = "form-field__hint";
+    indicesText.textContent = `Sample rows: ${indices.slice(0, 10).join(", ")}${
+      indices.length > 10 ? "…" : ""
+    }`;
+    outlierSummary.appendChild(indicesText);
+  }
+  outlierSummary.hidden = false;
+}
+
+function applyProfile(profile, options = {}) {
+  const { resetTraining = true } = options;
+  currentDatasetId = profile.dataset_id;
+  currentColumns = profile.columns || [];
+  currentNumericColumns = profile.numeric_columns || [];
+  const rows = Array.isArray(profile.shape) ? Number(profile.shape[0]) : Number(profile.shape?.[0] ?? 0);
+  const cols = Array.isArray(profile.shape) ? Number(profile.shape[1]) : Number(profile.shape?.[1] ?? 0);
+  currentRowCount = Number.isFinite(rows) ? rows : 0;
+  if (datasetShape) {
+    datasetShape.textContent = `${currentRowCount} rows × ${cols || currentColumns.length} columns`;
+  }
+  renderPreview(profile.preview, currentColumns);
+  renderColumns(currentColumns, profile.stats || {});
+  populateSelectors(currentColumns, currentNumericColumns);
+  datasetOverview.hidden = false;
+  if (preprocessSection) {
+    preprocessSection.hidden = false;
+  }
+  clearScatter();
+  clearHistogram();
+  lastHistogramRequest = null;
+  if (resetTraining) {
+    if (trainForm) {
+      trainForm.reset();
+    }
+    results.hidden = true;
+    metricsEl.innerHTML = "";
+    importanceEl.innerHTML = "";
+    togglePredictionButtons(false);
+    if (predictionTable) {
+      predictionTable.innerHTML = "";
+    }
+    if (algorithmSelect) {
+      algorithmSelect.selectedIndex = 0;
+    }
+    if (algorithmBadge) {
+      algorithmBadge.textContent = "";
+      algorithmBadge.hidden = true;
+    }
+    resetInference();
+  }
+}
+
+async function requestHistogram(column) {
+  if (!currentDatasetId) {
+    throw new Error("Load a dataset first");
+  }
+  if (!column) {
+    throw new Error("Select a numeric column");
+  }
+  const payload = {
+    column,
+    bins: Number(histogramSettingsState.bins) || 30,
+    density: Boolean(histogramSettingsState.density),
+  };
+  if (Array.isArray(histogramSettingsState.range) && histogramSettingsState.range.length === 2) {
+    payload.range = histogramSettingsState.range;
+  }
+  const response = await fetch(`/tabular_ml/api/v1/datasets/${currentDatasetId}/histogram`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to generate histogram");
+  }
+  renderHistogram(data);
+}
+
+async function loadAlgorithmMetadata() {
+  if (Object.keys(algorithmMetadataCache).length) {
+    return algorithmMetadataCache;
+  }
+  try {
+    const response = await fetch("/tabular_ml/api/v1/algorithms");
+    const data = await response.json();
+    if (response.ok && data.algorithms && typeof data.algorithms === "object") {
+      algorithmMetadataCache = data.algorithms;
+    }
+  } catch (error) {
+    // ignore network errors; metadata retrieval is optional
+  }
+  return algorithmMetadataCache;
+}
+
+function closeSettings() {
+  if (!settingsDialog) {
+    return;
+  }
+  settingsDialog.hidden = true;
+  settingsContent?.replaceChildren();
+  activeSettingsTarget = null;
+}
+
+function openSettings(target) {
+  if (!settingsDialog) {
+    return;
+  }
+  const template = document.getElementById(`${target}-settings-template`);
+  if (!template) {
+    return;
+  }
+  settingsContent?.replaceChildren(template.content.cloneNode(true));
+  activeSettingsTarget = target;
+  const titles = {
+    scatter: "Scatter plot settings",
+    histogram: "Histogram settings",
+    training: "Model training settings",
+  };
+  if (settingsTitle) {
+    settingsTitle.textContent = titles[target] || "Settings";
+  }
+  settingsDialog.hidden = false;
+  const form = settingsContent?.querySelector("form[data-settings-form]");
+  if (form) {
+    if (target === "scatter") {
+      initialiseScatterSettings(form);
+    } else if (target === "histogram") {
+      initialiseHistogramSettings(form);
+    } else if (target === "training") {
+      initialiseTrainingSettings(form);
+    }
+  }
+  const focusTarget = settingsContent?.querySelector("input, select, button:not([data-settings-close])");
+  focusTarget?.focus();
+}
+
+function initialiseScatterSettings(form) {
+  const maxPointsInput = form.querySelector("#scatter-max-points");
+  const pointSizeInput = form.querySelector("#scatter-point-size");
+  if (maxPointsInput) {
+    maxPointsInput.value = scatterSettingsState.maxPoints;
+  }
+  if (pointSizeInput) {
+    pointSizeInput.value = scatterSettingsState.pointSize;
+  }
+  if (form._submitHandler) {
+    form.removeEventListener("submit", form._submitHandler);
+  }
+  const submitHandler = (event) => {
+    event.preventDefault();
+    if (maxPointsInput) {
+      const raw = Number(maxPointsInput.value);
+      if (!Number.isFinite(raw) || raw < 50 || raw > 5000) {
+        scatterController?.setStatus("Maximum points must be between 50 and 5000", "error");
+        return;
+      }
+      scatterSettingsState.maxPoints = Math.round(raw);
+    }
+    if (pointSizeInput) {
+      const raw = Number(pointSizeInput.value);
+      scatterSettingsState.pointSize = Number.isFinite(raw) ? Math.min(Math.max(raw, 2), 10) : 4;
+    }
+    scatterController?.setStatus("Settings saved. Regenerate scatter to apply.", "info");
+    closeSettings();
+  };
+  form._submitHandler = submitHandler;
+  form.addEventListener("submit", submitHandler);
+}
+
+function initialiseHistogramSettings(form) {
+  const binsInput = form.querySelector("#histogram-bins");
+  const densitySelect = form.querySelector("#histogram-density");
+  const rangeMinInput = form.querySelector("#histogram-range-min");
+  const rangeMaxInput = form.querySelector("#histogram-range-max");
+  if (binsInput) {
+    binsInput.value = histogramSettingsState.bins;
+  }
+  if (densitySelect) {
+    densitySelect.value = histogramSettingsState.density ? "true" : "false";
+  }
+  if (rangeMinInput && rangeMaxInput) {
+    if (Array.isArray(histogramSettingsState.range)) {
+      rangeMinInput.value = histogramSettingsState.range[0];
+      rangeMaxInput.value = histogramSettingsState.range[1];
+    } else {
+      rangeMinInput.value = "";
+      rangeMaxInput.value = "";
+    }
+  }
+  if (form._submitHandler) {
+    form.removeEventListener("submit", form._submitHandler);
+  }
+  const submitHandler = (event) => {
+    event.preventDefault();
+    const binsValue = Number(binsInput?.value || histogramSettingsState.bins);
+    if (!Number.isFinite(binsValue) || binsValue < 2 || binsValue > 200) {
+      histogramController?.setStatus("Bins must be between 2 and 200", "error");
+      return;
+    }
+    histogramSettingsState.bins = Math.round(binsValue);
+    if (densitySelect) {
+      histogramSettingsState.density = densitySelect.value === "true";
+    }
+    if (rangeMinInput && rangeMaxInput) {
+      const minText = rangeMinInput.value.trim();
+      const maxText = rangeMaxInput.value.trim();
+      if (minText && maxText) {
+        const minValue = Number(minText);
+        const maxValue = Number(maxText);
+        if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+          histogramController?.setStatus("Range values must be numeric", "error");
+          return;
+        }
+        if (minValue >= maxValue) {
+          histogramController?.setStatus("Range minimum must be less than maximum", "error");
+          return;
+        }
+        histogramSettingsState.range = [minValue, maxValue];
+      } else {
+        histogramSettingsState.range = null;
+      }
+    }
+    closeSettings();
+    if (lastHistogramRequest?.column) {
+      requestHistogram(lastHistogramRequest.column).then(() => {
+        histogramController?.setStatus("Histogram updated", "success");
+      }).catch((error) => {
+        histogramController?.setStatus(
+          error instanceof Error ? error.message : "Histogram update failed",
+          "error",
+        );
+      });
+    }
+  };
+  form._submitHandler = submitHandler;
+  form.addEventListener("submit", submitHandler);
+}
+
+async function initialiseTrainingSettings(form) {
+  const container = form.querySelector("#training-parameters");
+  const resetButton = form.querySelector("[data-settings-reset]");
+  if (!container) {
+    return;
+  }
+  if (form._submitHandler) {
+    form.removeEventListener("submit", form._submitHandler);
+  }
+  if (resetButton && form._resetHandler) {
+    resetButton.removeEventListener("click", form._resetHandler);
+  }
+  await loadAlgorithmMetadata();
+  container.innerHTML = "";
+  const selectedAlgorithm = algorithmSelect?.value && algorithmSelect.value !== "auto"
+    ? algorithmSelect.value
+    : "linear_model";
+  const metadata = algorithmMetadataCache[selectedAlgorithm];
+  if (algorithmSelect && algorithmSelect.value === "auto") {
+    const info = document.createElement("p");
+    info.className = "form-field__hint";
+    info.textContent = "Automatic mode uses a baseline linear model. Select a specific algorithm to apply custom settings.";
+    container.appendChild(info);
+  }
+  if (!metadata) {
+    const message = document.createElement("p");
+    message.className = "form-field__hint";
+    message.textContent = "Algorithm metadata unavailable.";
+    container.appendChild(message);
+  } else {
+    const overrides = trainingSettingsState[selectedAlgorithm] || {};
+    metadata.hyperparameters.forEach((param) => {
+      const field = document.createElement("div");
+      field.className = "form-field";
+      const label = document.createElement("label");
+      const inputId = `training-${selectedAlgorithm}-${param.name}`;
+      label.className = "form-field__label";
+      label.setAttribute("for", inputId);
+      label.textContent = param.label || param.name;
+      field.appendChild(label);
+      let input;
+      if (param.type === "select") {
+        input = document.createElement("select");
+        (param.choices || []).forEach((choice) => {
+          const option = document.createElement("option");
+          option.value = choice;
+          option.textContent = choice;
+          input.appendChild(option);
+        });
+        input.value = overrides[param.name] ?? param.default ?? (param.choices?.[0] ?? "");
+      } else if (param.type === "bool") {
+        input = document.createElement("select");
+        [
+          { value: "true", label: "True" },
+          { value: "false", label: "False" },
+        ].forEach((optionData) => {
+          const option = document.createElement("option");
+          option.value = optionData.value;
+          option.textContent = optionData.label;
+          input.appendChild(option);
+        });
+        const boolValue = overrides[param.name] ?? param.default ?? false;
+        input.value = boolValue ? "true" : "false";
+      } else {
+        input = document.createElement("input");
+        input.type = "number";
+        if (param.type === "int") {
+          input.step = param.step ?? "1";
+        } else {
+          input.step = param.step ?? "0.1";
+        }
+        if (param.min !== undefined) {
+          input.min = param.min;
+        }
+        if (param.max !== undefined) {
+          input.max = param.max;
+        }
+        const value = overrides[param.name];
+        input.value = value !== undefined ? value : param.default ?? "";
+        if (param.nullable) {
+          input.placeholder = "Leave blank for automatic";
+        }
+      }
+      input.id = inputId;
+      input.name = param.name;
+      field.appendChild(input);
+      if (param.tasks && param.tasks.length) {
+        const hint = document.createElement("p");
+        hint.className = "form-field__hint";
+        hint.textContent = `Applies to: ${param.tasks.join(", ")}`;
+        field.appendChild(hint);
+      }
+      container.appendChild(field);
+    });
+  }
+  const submitHandler = (event) => {
+    event.preventDefault();
+    if (!metadata) {
+      closeSettings();
+      return;
+    }
+    const overrides = {};
+    let hasError = false;
+    metadata.hyperparameters.forEach((param) => {
+      const input = container.querySelector(`[name="${param.name}"]`);
+      if (!input) {
+        return;
+      }
+      let value;
+      if (param.type === "select") {
+        value = input.value;
+      } else if (param.type === "bool") {
+        value = input.value === "true";
+      } else {
+        const raw = input.value.trim();
+        if (!raw) {
+          value = undefined;
+        } else {
+          const numeric = Number(raw);
+          if (!Number.isFinite(numeric)) {
+            hasError = true;
+            trainController?.setStatus(`Hyperparameter ${param.name} must be numeric`, "error");
+            return;
+          }
+          value = param.type === "int" ? Math.round(numeric) : numeric;
+        }
+      }
+      if (hasError) {
+        return;
+      }
+      if (value === undefined || value === "") {
+        return;
+      }
+      if (param.default !== undefined && value === param.default) {
+        return;
+      }
+      overrides[param.name] = value;
+    });
+    if (hasError) {
+      return;
+    }
+    if (Object.keys(overrides).length) {
+      trainingSettingsState[selectedAlgorithm] = overrides;
+      trainController?.setStatus("Hyperparameters saved", "success");
+    } else {
+      delete trainingSettingsState[selectedAlgorithm];
+      trainController?.setStatus("Using algorithm defaults", "info");
+    }
+    closeSettings();
+  };
+  form._submitHandler = submitHandler;
+  form.addEventListener("submit", submitHandler);
+  if (resetButton) {
+    const resetHandler = (event) => {
+      event.preventDefault();
+      delete trainingSettingsState[selectedAlgorithm];
+      initialiseTrainingSettings(form);
+    };
+    form._resetHandler = resetHandler;
+    resetButton.addEventListener("click", resetHandler, { once: true });
+  }
+}
+
 const datasetController = bindForm(datasetForm, {
   pendingText: "Uploading…",
   successText: "Dataset loaded",
@@ -608,15 +1235,7 @@ const datasetController = bindForm(datasetForm, {
     if (!response.ok) {
       throw new Error(data.error || "Unable to load dataset");
     }
-    currentDatasetId = data.dataset_id;
-    currentColumns = data.columns;
-    currentNumericColumns = data.numeric_columns;
-    datasetShape.textContent = `${data.shape[0]} rows × ${data.shape[1]} columns`;
-    renderPreview(data.preview, data.columns);
-    renderColumns(data.columns, data.stats);
-    populateSelectors(data.columns, data.numeric_columns);
-    datasetOverview.hidden = false;
-    resetInference();
+    applyProfile(data);
     setFormsEnabled(true);
     datasetController.setStatus("Dataset ready", "success");
   },
@@ -655,6 +1274,17 @@ datasetReset.addEventListener("click", () => {
   datasetName.textContent = "";
   dropzone?.classList.remove("has-file");
   datasetController.setStatus("Ready", "info");
+  clearHistogram();
+  if (preprocessSection) {
+    preprocessSection.hidden = true;
+  }
+  if (outlierSummary) {
+    outlierSummary.hidden = true;
+    outlierSummary.textContent = "";
+  }
+  if (filterSummary) {
+    filterSummary.textContent = "";
+  }
 });
 
 datasetClear.addEventListener("click", async () => {
@@ -674,6 +1304,8 @@ datasetClear.addEventListener("click", async () => {
   datasetOverview.hidden = true;
   setFormsEnabled(false);
   clearScatter();
+  clearHistogram();
+  lastHistogramRequest = null;
   datasetController.setStatus("Dataset removed", "info");
   if (predictionTable) {
     predictionTable.innerHTML = "";
@@ -689,7 +1321,7 @@ datasetClear.addEventListener("click", async () => {
   }
 });
 
-const scatterController = bindForm(scatterForm, {
+scatterController = bindForm(scatterForm, {
   pendingText: "Generating scatter…",
   successText: "Scatter updated",
   logContext: "Tabular ML · Scatter",
@@ -703,6 +1335,7 @@ const scatterController = bindForm(scatterForm, {
     const payload = {
       x: scatterX.value,
       y: scatterY.value,
+      max_points: scatterSettingsState.maxPoints,
     };
     if (scatterColor.value) {
       payload.color = scatterColor.value;
@@ -727,6 +1360,187 @@ scatterReset.addEventListener("click", () => {
   scatterController.setStatus("Ready", "info");
 });
 
+if (histogramForm) {
+  histogramController = bindForm(histogramForm, {
+    pendingText: "Rendering histogram…",
+    successText: "Histogram updated",
+    logContext: "Tabular ML · Histogram",
+    async onSubmit() {
+      if (!currentDatasetId) {
+        throw new Error("Load a dataset first");
+      }
+      if (!histogramColumn?.value) {
+        throw new Error("Select a numeric column");
+      }
+      await requestHistogram(histogramColumn.value);
+    },
+  });
+}
+
+if (histogramReset) {
+  histogramReset.addEventListener("click", () => {
+    histogramForm?.reset();
+    clearHistogram();
+    lastHistogramRequest = null;
+    histogramController?.setStatus("Ready", "info");
+  });
+}
+
+if (outlierForm) {
+  outlierController = bindForm(outlierForm, {
+    pendingText: "Detecting outliers…",
+    successText: "Outlier report ready",
+    logContext: "Tabular ML · Outliers",
+    async onSubmit() {
+      if (!currentDatasetId) {
+        throw new Error("Load a dataset first");
+      }
+      const thresholdValue = parseFloat(outlierThreshold?.value || "3");
+      if (!Number.isFinite(thresholdValue) || thresholdValue <= 0) {
+        throw new Error("Provide a positive threshold");
+      }
+      const selected = Array.from(outlierColumns?.selectedOptions || [])
+        .map((option) => option.value)
+        .filter((value) => value);
+      const response = await fetch(
+        `/tabular_ml/api/v1/datasets/${currentDatasetId}/preprocess/outliers/detect`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            threshold: thresholdValue,
+            columns: selected.length ? selected : undefined,
+          }),
+        },
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Outlier detection failed");
+      }
+      renderOutlierSummary(data);
+    },
+  });
+}
+
+if (removeOutliersButton) {
+  removeOutliersButton.addEventListener("click", async () => {
+    if (!currentDatasetId) {
+      outlierController?.setStatus("Load a dataset first", "error");
+      return;
+    }
+    const thresholdValue = parseFloat(outlierThreshold?.value || "3");
+    if (!Number.isFinite(thresholdValue) || thresholdValue <= 0) {
+      outlierController?.setStatus("Provide a positive threshold", "error");
+      return;
+    }
+    const selected = Array.from(outlierColumns?.selectedOptions || [])
+      .map((option) => option.value)
+      .filter((value) => value);
+    try {
+      const previousRows = currentRowCount;
+      const response = await fetch(
+        `/tabular_ml/api/v1/datasets/${currentDatasetId}/preprocess/outliers/remove`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            threshold: thresholdValue,
+            columns: selected.length ? selected : undefined,
+          }),
+        },
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to remove outliers");
+      }
+      applyProfile(data);
+      const removed = Math.max(previousRows - currentRowCount, 0);
+      if (removed > 0) {
+        outlierController?.setStatus(`Removed ${removed} rows flagged as outliers.`, "success");
+      } else {
+        outlierController?.setStatus("No rows removed; no outliers detected.", "info");
+      }
+      renderOutlierSummary({
+        total_outliers: 0,
+        inspected_columns: data.numeric_columns || selected,
+        sample_indices: [],
+      });
+    } catch (error) {
+      outlierController?.setStatus(
+        error instanceof Error ? error.message : "Outlier removal failed",
+        "error",
+      );
+    }
+  });
+}
+
+if (filterForm) {
+  filterController = bindForm(filterForm, {
+    pendingText: "Applying filter…",
+    successText: "Filter applied",
+    logContext: "Tabular ML · Filter",
+    async onSubmit() {
+      if (!currentDatasetId) {
+        throw new Error("Load a dataset first");
+      }
+      if (!filterColumn?.value) {
+        throw new Error("Choose a column to filter");
+      }
+      const operator = filterOperator?.value || "eq";
+      const rawValue = filterValue?.value ?? "";
+      if (!rawValue.trim()) {
+        throw new Error("Provide a value for the filter");
+      }
+      let value;
+      if (operator === "in") {
+        value = rawValue
+          .split(",")
+          .map((part) => part.trim())
+          .filter((part) => part.length > 0);
+        if (!value.length) {
+          throw new Error("Provide at least one value for the list filter");
+        }
+      } else {
+        value = rawValue;
+      }
+      const response = await fetch(`/tabular_ml/api/v1/datasets/${currentDatasetId}/preprocess/filter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rules: [
+            {
+              column: filterColumn.value,
+              operator,
+              value,
+            },
+          ],
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Filtering failed");
+      }
+      const previousRows = currentRowCount;
+      applyProfile(data);
+      const removed = Math.max(previousRows - currentRowCount, 0);
+      if (filterSummary) {
+        filterSummary.textContent = removed
+          ? `Removed ${removed} rows; ${currentRowCount} remain.`
+          : `Filter kept ${currentRowCount} rows.`;
+      }
+    },
+  });
+}
+
+if (filterReset) {
+  filterReset.addEventListener("click", () => {
+    if (filterSummary) {
+      filterSummary.textContent = "";
+    }
+    filterController?.setStatus("Ready", "info");
+  });
+}
+
 const trainController = bindForm(trainForm, {
   pendingText: "Training…",
   successText: "Training complete",
@@ -739,13 +1553,21 @@ const trainController = bindForm(trainForm, {
     if (!target) {
       throw new Error("Provide a target column");
     }
+    const algorithmValue = algorithmSelect?.value || "auto";
+    const payload = {
+      target,
+      algorithm: algorithmValue,
+    };
+    if (algorithmValue !== "auto") {
+      const overrides = trainingSettingsState[algorithmValue];
+      if (overrides && Object.keys(overrides).length) {
+        payload.hyperparameters = overrides;
+      }
+    }
     const response = await fetch(`/tabular_ml/api/v1/datasets/${currentDatasetId}/train`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        target,
-        algorithm: algorithmSelect?.value || "auto",
-      }),
+      body: JSON.stringify(payload),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -887,3 +1709,41 @@ if (batchDownload) {
     }
   });
 }
+
+if (settingsDialog) {
+  settingsDialog.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.dataset.settingsClose !== undefined) {
+      event.preventDefault();
+      closeSettings();
+    }
+  });
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !settingsDialog?.hidden) {
+    closeSettings();
+  }
+});
+
+[scatterSettingsButton, histogramSettingsButton, trainingSettingsButton].forEach((button) => {
+  if (!button) {
+    return;
+  }
+  button.addEventListener("click", () => {
+    const target = button.dataset.settingsTarget;
+    if (!target) {
+      return;
+    }
+    if (!currentDatasetId && target !== "training") {
+      datasetController?.setStatus("Load a dataset first", "error");
+      return;
+    }
+    openSettings(target);
+  });
+});
+
+loadAlgorithmMetadata();

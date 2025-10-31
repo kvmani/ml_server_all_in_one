@@ -205,6 +205,72 @@ def test_predict_batch_endpoint_and_download():
     assert "attachment" in download.headers.get("Content-Disposition", "")
 
 
+def test_histogram_endpoint_returns_counts():
+    df = pd.DataFrame({"value": [1, 2, 3, 4, 5, 6], "label": list("ABCDEF")})
+    client = _make_client()
+    dataset_id = _upload_dataset(client, df)
+    response = client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/histogram",
+        json={"column": "value", "bins": 3},
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["counts"]
+
+
+def test_outlier_detection_and_removal_endpoints():
+    df = pd.DataFrame({"value": [1] * 10 + [25], "label": list("ABCDEFGHIJK")})
+    client = _make_client()
+    dataset_id = _upload_dataset(client, df)
+    detect_response = client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/preprocess/outliers/detect",
+        json={},
+    )
+    assert detect_response.status_code == 200
+    report = detect_response.get_json()
+    assert report["total_outliers"] == 1
+    remove_response = client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/preprocess/outliers/remove",
+        json={},
+    )
+    assert remove_response.status_code == 200
+    cleaned = remove_response.get_json()
+    assert cleaned["shape"][0] == len(df) - 1
+
+
+def test_filter_endpoint_applies_rule():
+    df = pd.DataFrame({"value": [1, 2, 3, 4], "label": ["a", "b", "c", "d"]})
+    client = _make_client()
+    dataset_id = _upload_dataset(client, df)
+    response = client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/preprocess/filter",
+        json={"rules": [{"column": "value", "operator": "gt", "value": 2}]},
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["shape"][0] == 2
+    assert payload["rows_removed"] == 2
+
+
+def test_algorithm_metadata_endpoint():
+    client = _make_client()
+    response = client.get("/tabular_ml/api/v1/algorithms")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert "linear_model" in payload["algorithms"]
+
+
+def test_train_endpoint_validates_hyperparameters():
+    df = pd.DataFrame({"x": [1, 2, 3, 4], "target": [0, 1, 0, 1]})
+    client = _make_client()
+    dataset_id = _upload_dataset(client, df)
+    response = client.post(
+        f"/tabular_ml/api/v1/datasets/{dataset_id}/train",
+        json={"target": "target", "algorithm": "linear_model", "hyperparameters": {"max_iter": "abc"}},
+    )
+    assert response.status_code == 400
+
+
 def test_predictions_require_training_first():
     df = pd.DataFrame({"feat1": [1, 2, 3], "target": [0, 1, 0]})
     client = _make_client()

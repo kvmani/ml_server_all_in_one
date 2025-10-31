@@ -73,10 +73,15 @@
               <ul id="column-summary" class="tabular-columns list-reset"></ul>
             </div>
           </div>
-          <div class="tabular-overview__grid">
-            <div>
-              <h3 class="form-section__title">Scatter plot</h3>
-              <form id="scatter-form" class="form-grid" novalidate>
+          <div class="tabular-overview__grid tabular-overview__grid--visuals">
+            <section class="tabular-card">
+              <header class="tabular-card__header">
+                <h3 class="form-section__title" id="scatter-section-title">Scatter plot</h3>
+                <button type="button" class="settings-button" id="scatter-settings" data-settings-target="scatter" aria-haspopup="dialog" aria-controls="settings-dialog" aria-label="Scatter plot settings">
+                  <span aria-hidden="true">⚙️</span>
+                </button>
+              </header>
+              <form id="scatter-form" class="form-grid" novalidate aria-labelledby="scatter-section-title">
                 <div class="input-grid">
                   <div class="form-field">
                     <label class="form-field__label" for="scatter-x">X axis</label>
@@ -104,10 +109,41 @@
                 </svg>
                 <figcaption id="scatter-caption" class="form-field__hint"></figcaption>
               </figure>
-            </div>
-            <div>
-              <h3 class="form-section__title">Train model</h3>
-              <form id="train-form" class="form-grid" novalidate>
+            </section>
+            <section class="tabular-card">
+              <header class="tabular-card__header">
+                <h3 class="form-section__title" id="histogram-section-title">Histogram</h3>
+                <button type="button" class="settings-button" id="histogram-settings" data-settings-target="histogram" aria-haspopup="dialog" aria-controls="settings-dialog" aria-label="Histogram settings">
+                  <span aria-hidden="true">⚙️</span>
+                </button>
+              </header>
+              <form id="histogram-form" class="form-grid" novalidate aria-labelledby="histogram-section-title">
+                <div class="form-field">
+                  <label class="form-field__label" for="histogram-column">Column</label>
+                  <select id="histogram-column" name="column"></select>
+                  <p class="form-field__hint">Select a numeric column to visualise its distribution.</p>
+                </div>
+                <div class="form-actions">
+                  <button class="btn" type="submit">Generate histogram</button>
+                  <button class="btn btn--ghost" type="reset" id="histogram-reset">Reset</button>
+                </div>
+                <p class="status-text" data-role="status" aria-live="polite"></p>
+              </form>
+              <figure class="histogram-figure">
+                <svg id="histogram-plot" viewBox="0 0 480 320" role="img" aria-labelledby="histogram-title" hidden>
+                  <title id="histogram-title">Histogram</title>
+                </svg>
+                <figcaption id="histogram-caption" class="form-field__hint"></figcaption>
+              </figure>
+            </section>
+            <section class="tabular-card">
+              <header class="tabular-card__header">
+                <h3 class="form-section__title" id="training-section-title">Train model</h3>
+                <button type="button" class="settings-button" id="training-settings" data-settings-target="training" aria-haspopup="dialog" aria-controls="settings-dialog" aria-label="Training settings">
+                  <span aria-hidden="true">⚙️</span>
+                </button>
+              </header>
+              <form id="train-form" class="form-grid" novalidate aria-labelledby="training-section-title">
                 <div class="form-field">
                   <label class="form-field__label" for="target">
                     Target column
@@ -215,10 +251,142 @@
               </section>
             </div>
           </div>
+          <section class="surface-muted tabular-preprocess" id="preprocess-section" hidden>
+            <header class="tabular-preprocess__header">
+              <div>
+                <p class="tool-card__category">Data preprocessing</p>
+                <h3 class="form-section__title">Refine dataset</h3>
+                <p class="form-field__hint">Detect outliers or apply quick filters before training.</p>
+              </div>
+            </header>
+            <div class="tabular-preprocess__grid">
+              <section class="tabular-card">
+                <header class="tabular-card__header">
+                  <h4 class="form-section__title" id="outlier-section-title">Outlier detection</h4>
+                </header>
+                <form id="outlier-form" class="form-grid" novalidate aria-labelledby="outlier-section-title">
+                  <div class="form-field">
+                    <label class="form-field__label" for="outlier-columns">Columns</label>
+                    <select id="outlier-columns" name="columns" multiple></select>
+                    <p class="form-field__hint">Leave empty to inspect all numeric columns. Hold Ctrl or Cmd to select multiple entries.</p>
+                  </div>
+                  <div class="form-field">
+                    <label class="form-field__label" for="outlier-threshold">Z-score threshold</label>
+                    <input id="outlier-threshold" name="threshold" type="number" step="0.1" min="0.1" value="3.0">
+                  </div>
+                  <div class="form-actions">
+                    <button class="btn" type="submit" id="detect-outliers">Detect outliers</button>
+                    <button class="btn btn--ghost" type="button" id="remove-outliers">Remove outliers</button>
+                  </div>
+                  <p class="status-text" data-role="status" aria-live="polite"></p>
+                </form>
+                <div id="outlier-summary" class="tabular-outliers" hidden aria-live="polite"></div>
+              </section>
+              <section class="tabular-card">
+                <header class="tabular-card__header">
+                  <h4 class="form-section__title" id="filter-section-title">Filter rows</h4>
+                </header>
+                <form id="filter-form" class="form-grid" novalidate aria-labelledby="filter-section-title">
+                  <div class="form-field">
+                    <label class="form-field__label" for="filter-column">Column</label>
+                    <select id="filter-column" name="column"></select>
+                  </div>
+                  <div class="form-field">
+                    <label class="form-field__label" for="filter-operator">Operator</label>
+                    <select id="filter-operator" name="operator">
+                      <option value="eq">equals</option>
+                      <option value="ne">does not equal</option>
+                      <option value="gt">greater than</option>
+                      <option value="gte">greater than or equal</option>
+                      <option value="lt">less than</option>
+                      <option value="lte">less than or equal</option>
+                      <option value="contains">contains</option>
+                      <option value="in">in list</option>
+                    </select>
+                  </div>
+                  <div class="form-field">
+                    <label class="form-field__label" for="filter-value">Value</label>
+                    <input id="filter-value" name="value" placeholder="e.g. 42 or A, B">
+                    <p class="form-field__hint">For "in list" separate entries with commas.</p>
+                  </div>
+                  <div class="form-actions">
+                    <button class="btn" type="submit">Apply filter</button>
+                    <button class="btn btn--ghost" type="reset" id="filter-reset">Reset</button>
+                  </div>
+                  <p class="status-text" data-role="status" aria-live="polite"></p>
+                </form>
+                <p id="filter-summary" class="form-field__hint" aria-live="polite"></p>
+              </section>
+            </div>
+          </section>
         </section>
       </div>
     </div>
   </section>
+  <div id="settings-dialog" class="tabular-settings" hidden>
+    <div class="tabular-settings__backdrop" data-settings-close></div>
+    <div class="tabular-settings__panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <header class="tabular-settings__header">
+        <h2 id="settings-title" class="form-section__title">Settings</h2>
+        <button type="button" class="settings-close" data-settings-close aria-label="Close settings">✕</button>
+      </header>
+      <div id="settings-content" class="tabular-settings__content"></div>
+    </div>
+  </div>
+  <template id="scatter-settings-template">
+    <form data-settings-form="scatter" class="form-grid">
+      <div class="form-field">
+        <label class="form-field__label" for="scatter-max-points">Maximum points</label>
+        <input id="scatter-max-points" name="max_points" type="number" min="50" max="5000" step="50" value="400">
+        <p class="form-field__hint">Large datasets are sampled for performance. Increase cautiously.</p>
+      </div>
+      <div class="form-field">
+        <label class="form-field__label" for="scatter-point-size">Point size</label>
+        <input id="scatter-point-size" name="point_size" type="range" min="2" max="10" step="1" value="4">
+        <p class="form-field__hint">Adjust marker size for dense plots.</p>
+      </div>
+      <div class="form-actions">
+        <button class="btn" type="submit">Apply settings</button>
+      </div>
+    </form>
+  </template>
+  <template id="histogram-settings-template">
+    <form data-settings-form="histogram" class="form-grid">
+      <div class="form-field">
+        <label class="form-field__label" for="histogram-bins">Bins</label>
+        <input id="histogram-bins" name="bins" type="number" min="5" max="120" value="30">
+        <p class="form-field__hint">Number of bars in the histogram.</p>
+      </div>
+      <div class="form-field">
+        <label class="form-field__label" for="histogram-density">Normalise counts</label>
+        <select id="histogram-density" name="density">
+          <option value="false" selected>Show counts</option>
+          <option value="true">Show density</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-field__label" for="histogram-range-min">Custom range</label>
+        <div class="settings-range">
+          <input id="histogram-range-min" name="range_min" type="number" step="any" placeholder="Min">
+          <input id="histogram-range-max" name="range_max" type="number" step="any" placeholder="Max">
+        </div>
+        <p class="form-field__hint">Leave blank to auto-detect bounds.</p>
+      </div>
+      <div class="form-actions">
+        <button class="btn" type="submit">Apply settings</button>
+      </div>
+    </form>
+  </template>
+  <template id="training-settings-template">
+    <form data-settings-form="training" class="form-grid">
+      <p class="form-field__hint">Configure hyperparameters for the selected algorithm. Settings apply to upcoming training runs.</p>
+      <div id="training-parameters" class="tabular-settings__parameters"></div>
+      <div class="form-actions">
+        <button class="btn" type="submit">Save hyperparameters</button>
+        <button class="btn btn--ghost" type="button" data-settings-reset>Reset to defaults</button>
+      </div>
+    </form>
+  </template>
 {% endblock %}
 {% block scripts %}
 <script type="module" src="{{ url_for('tabular_ml.static', filename='js/index.js') }}"></script>
