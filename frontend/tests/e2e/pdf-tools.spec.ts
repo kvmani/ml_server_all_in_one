@@ -9,7 +9,7 @@ import {
 
 test.describe("PDF toolkit workflows", () => {
   test("queues files, merges them, and prepares split downloads", async ({ page }, testInfo) => {
-    await page.route("**/pdf_tools/api/v1/metadata", async (route) => {
+    await page.route("**/api/pdf_tools/metadata", async (route) => {
       await route.fulfill({
         status: 200,
         body: JSON.stringify(PDF_METADATA),
@@ -17,7 +17,7 @@ test.describe("PDF toolkit workflows", () => {
       });
     });
 
-    await page.route("**/pdf_tools/api/v1/merge", async (route) => {
+    await page.route("**/api/pdf_tools/merge", async (route) => {
       await route.fulfill({
         status: 200,
         headers: {
@@ -28,7 +28,7 @@ test.describe("PDF toolkit workflows", () => {
       });
     });
 
-    await page.route("**/pdf_tools/api/v1/split", async (route) => {
+    await page.route("**/api/pdf_tools/split", async (route) => {
       await route.fulfill({
         status: 200,
         headers: { "content-type": "application/json" },
