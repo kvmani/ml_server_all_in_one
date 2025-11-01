@@ -1,10 +1,13 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useAppContext } from "../contexts/AppContext";
 import { LogWindow } from "./LogWindow";
 
 export function Layout({ children }: { children: ReactNode }) {
   const { manifests, currentTheme, themeOptions, setTheme, siteSettings } = useAppContext();
   const [navOpen, setNavOpen] = useState(false);
+  const location = useLocation();
+  const helpHref = siteSettings.help_overview || "/help/overview";
 
   const options = useMemo(
     () =>
@@ -25,6 +28,10 @@ export function Layout({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  useEffect(() => {
+    setNavOpen(false);
+  }, [location.pathname]);
+
   return (
     <>
       <a className="skip-link" href="#main">
@@ -33,7 +40,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <header className="site-header" role="banner">
         <div className="shell">
           <div className="brand">
-            <a className="brand__link" href="/">
+            <Link className="brand__link" data-keep-theme to="/">
               <span className="brand__logo" aria-hidden="true">
                 <img src="/static/img/ml_server_icon.png" alt="" />
               </span>
@@ -41,7 +48,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 <span className="brand__title">ML Server All-In-One</span>
                 <span className="brand__subtitle">Offline ML Toolkit</span>
               </span>
-            </a>
+            </Link>
           </div>
           <button
             className="nav-toggle"
@@ -56,22 +63,28 @@ export function Layout({ children }: { children: ReactNode }) {
           <nav id="primary-nav" className={`site-nav${navOpen ? " is-open" : ""}`} aria-label="Primary" data-nav-menu>
             <ul className="nav-list" onClick={() => setNavOpen(false)}>
               <li className="nav-list__item">
-                <a className="nav-list__link" data-keep-theme href="/">
+                <Link className="nav-list__link" data-keep-theme to="/">
                   Home
-                </a>
+                </Link>
               </li>
               {manifests.map((plugin) => (
                 <li className="nav-list__item" key={plugin.blueprint}>
-                  <a className="nav-list__link" data-keep-theme href={`/${plugin.blueprint}/`}>
+                  <Link className="nav-list__link" data-keep-theme to={`/tools/${plugin.blueprint}`}>
                     {plugin.title}
-                  </a>
+                  </Link>
                 </li>
               ))}
-              {siteSettings.help_overview ? (
+              {helpHref ? (
                 <li className="nav-list__item">
-                  <a className="nav-list__link" data-keep-theme href={siteSettings.help_overview}>
-                    Help
-                  </a>
+                  {helpHref.startsWith("/") ? (
+                    <Link className="nav-list__link" data-keep-theme to={helpHref}>
+                      Help
+                    </Link>
+                  ) : (
+                    <a className="nav-list__link" data-keep-theme href={helpHref}>
+                      Help
+                    </a>
+                  )}
                 </li>
               ) : null}
             </ul>

@@ -36,3 +36,12 @@
 - All request payloads are validated via Pydantic models located in `common/validation.py`.
 - File uploads now share consistent limit checks and MIME validation utilities from `common/`.
 
+## Frontend SPA migration
+
+- The Flask app now serves a single React entry point. All plugin screens are rendered via React Router routes under `/tools/<plugin>`.
+- `LoadingOverlay`, `SettingsModal`, and `ChartPanel` provide shared UX elements. Each tool adopts per-tool settings persisted in `localStorage` through `useToolSettings`.
+- Legacy Jinja templates for tools have been removed; helpers such as `usePluginSettings` expose server-provided configuration (upload limits, docs links) to React components.
+- The Unit Converter, Hydride Segmentation, and Tabular ML pages now call the `/api/<plugin>/…` endpoints directly and no longer rely on server-rendered props. Each surface tool-specific settings via the shared modal and persist preferences in `localStorage`.
+- Development workflow: run the Flask server (`python scripts/run_dev.py`) alongside the Vite dev server (`npm run dev -- --host`). The dev server proxies `/api/*` requests to Flask and hot-reloads React code.
+- Frontend testing uses Vitest (`npm run test`) with jsdom and Testing Library. End-to-end coverage remains under Playwright (`npm run test:e2e`).
+

@@ -13,7 +13,7 @@ import {
 
 test.describe("Tabular ML studio", () => {
   test("profiles datasets, trains models, and exports predictions", async ({ page }, testInfo) => {
-    await page.route("**/tabular_ml/api/v1/datasets", async (route) => {
+    await page.route("**/api/tabular_ml/datasets", async (route) => {
       await route.fulfill({
         status: 200,
         headers: { "content-type": "application/json" },
@@ -23,7 +23,7 @@ test.describe("Tabular ML studio", () => {
 
     const datasetId = DATASET_PROFILE.dataset_id;
 
-    await page.route(`**/tabular_ml/api/v1/datasets/${datasetId}/scatter`, async (route) => {
+    await page.route(`**/api/tabular_ml/datasets/${datasetId}/scatter`, async (route) => {
       await route.fulfill({
         status: 200,
         headers: { "content-type": "application/json" },
@@ -31,7 +31,7 @@ test.describe("Tabular ML studio", () => {
       });
     });
 
-    await page.route(`**/tabular_ml/api/v1/datasets/${datasetId}/train`, async (route) => {
+    await page.route(`**/api/tabular_ml/datasets/${datasetId}/train`, async (route) => {
       await route.fulfill({
         status: 200,
         headers: { "content-type": "application/json" },
@@ -40,7 +40,7 @@ test.describe("Tabular ML studio", () => {
     });
 
     const predictionsPattern = new RegExp(
-      String.raw`\/tabular_ml\/api\/v1\/datasets\/${datasetId}\/predictions(?:\?.*)?$`,
+      String.raw`\/api\/tabular_ml\/datasets\/${datasetId}\/predictions(?:\?.*)?$`,
     );
     await page.route(predictionsPattern, async (route) => {
       const url = route.request().url();
@@ -59,7 +59,7 @@ test.describe("Tabular ML studio", () => {
       }
     });
 
-    await page.route(`**/tabular_ml/api/v1/datasets/${datasetId}/predict`, async (route) => {
+    await page.route(`**/api/tabular_ml/datasets/${datasetId}/predict`, async (route) => {
       await route.fulfill({
         status: 200,
         headers: { "content-type": "application/json" },
@@ -68,7 +68,7 @@ test.describe("Tabular ML studio", () => {
     });
 
     const batchPattern = new RegExp(
-      String.raw`\/tabular_ml\/api\/v1\/datasets\/${datasetId}\/predict\/batch(?:\?.*)?$`,
+      String.raw`\/api\/tabular_ml\/datasets\/${datasetId}\/predict\/batch(?:\?.*)?$`,
     );
     await page.route(batchPattern, async (route) => {
       if (route.request().method() === "POST") {

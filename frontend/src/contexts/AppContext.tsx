@@ -2,13 +2,12 @@ import { createContext, useContext } from "react";
 import type { InitialState, PluginManifest, SiteSettings } from "../types";
 
 export type AppContextValue = {
-  page: string;
   currentTheme: string;
   defaultTheme: string;
   themeOptions: Record<string, { label?: string }>;
   manifests: PluginManifest[];
   siteSettings: SiteSettings;
-  props: Record<string, unknown>;
+  pluginSettings: Record<string, Record<string, unknown>>;
   setTheme: (theme: string) => void;
 };
 
@@ -29,5 +28,6 @@ export function normaliseInitialState(state: InitialState): InitialState {
       ...manifest,
       tags: Array.isArray(manifest.tags) ? manifest.tags : [],
     })),
+    pluginSettings: state.pluginSettings || {},
   };
 }

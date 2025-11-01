@@ -3,7 +3,7 @@ import { SEGMENTATION_RESPONSE, STATIC_BASE, TINY_PNG_BASE64, attachJSON } from 
 
 test.describe("Hydride segmentation workstation", () => {
   test("accepts microscopy images, runs segmentation, and stores history", async ({ page }, testInfo) => {
-    await page.route("**/hydride_segmentation/api/v1/segment", async (route) => {
+    await page.route("**/api/hydride_segmentation/segment", async (route) => {
       await route.fulfill({
         status: 200,
         headers: { "content-type": "application/json" },
@@ -25,7 +25,7 @@ test.describe("Hydride segmentation workstation", () => {
     await expect(page.locator("#crop-enabled")).toBeEnabled();
 
     const runSegmentation = async () => {
-      const responsePromise = page.waitForResponse("**/hydride_segmentation/api/v1/segment");
+      const responsePromise = page.waitForResponse("**/api/hydride_segmentation/segment");
       await page.getByRole("button", { name: "Run segmentation" }).click();
       await responsePromise;
       await expect(page.locator("#results")).toBeVisible();

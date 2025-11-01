@@ -22,13 +22,12 @@ export type SiteSettings = {
 };
 
 export type InitialState = {
-  page: string;
   currentTheme: string;
   defaultTheme: string;
   themeOptions: Record<string, { label?: string }>;
   siteSettings: SiteSettings;
   manifests: PluginManifest[];
-  props: Record<string, unknown>;
+  pluginSettings: Record<string, Record<string, unknown>>;
 };
 
 export type StatusLevel = "info" | "success" | "error" | "warning" | "progress";

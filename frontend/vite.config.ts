@@ -6,6 +6,11 @@ export default defineConfig({
   plugins: [react()],
   root: resolve(__dirname, "."),
   base: "/static/react/",
+  server: {
+    proxy: {
+      "/api": "http://localhost:5000",
+    },
+  },
   build: {
     outDir: resolve(__dirname, "../app/ui/static/react"),
     emptyOutDir: true,
@@ -13,6 +18,16 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       input: resolve(__dirname, "src/main.tsx"),
+    },
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: resolve(__dirname, "tests/setup.ts"),
+    include: ["tests/unit/**/*.test.{ts,tsx}"],
+    coverage: {
+      provider: "v8",
+      reportsDirectory: resolve(__dirname, "coverage"),
     },
   },
 });

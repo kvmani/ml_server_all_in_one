@@ -8,7 +8,7 @@ import {
 
 test.describe("Unit converter", () => {
   test("runs direct conversions and evaluates expressions", async ({ page }, testInfo) => {
-    await page.route("**/unit_converter/api/v1/convert", async (route) => {
+    await page.route("**/api/unit_converter/convert", async (route) => {
       await route.fulfill({
         status: 200,
         headers: { "content-type": "application/json" },
@@ -18,7 +18,7 @@ test.describe("Unit converter", () => {
       });
     });
 
-    await page.route("**/unit_converter/api/v1/expressions", async (route) => {
+    await page.route("**/api/unit_converter/expressions", async (route) => {
       await route.fulfill({
         status: 200,
         headers: { "content-type": "application/json" },

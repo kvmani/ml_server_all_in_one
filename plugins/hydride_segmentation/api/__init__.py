@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from flask import Blueprint, Response, current_app, render_template, request, url_for
+from flask import Blueprint, Response, current_app, request
 from PIL import Image
 
 from common.errors import ValidationAppError
@@ -26,63 +26,12 @@ from ..core.image_io import image_to_png_base64
 ALLOWED_MIMES = {"image/png", "image/jpeg", "image/tiff"}
 
 
-ui_bp = Blueprint(
-    "hydride_segmentation",
-    __name__,
-    url_prefix="/hydride_segmentation",
-    template_folder="../ui/templates",
-    static_folder="../ui/static/hydride_segmentation",
-    static_url_path="/static",
-)
-
-
 def _plugin_limits() -> FileLimit:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get(
         "hydride_segmentation", {}
     )
     upload = settings.get("upload")
     return FileLimit.from_settings(upload, default_max_files=1, default_max_mb=5)
-
-
-@ui_bp.get("/")
-def index() -> str:
-    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get(
-        "hydride_segmentation", {}
-    )
-    renderer = current_app.extensions.get("render_react")
-    if not renderer:
-        return render_template(
-            "hydride_segmentation/index.html", plugin_settings=settings
-        )
-
-    theme_state = current_app.extensions.get("theme_state")
-    apply_theme = current_app.extensions.get("theme_url")
-    _, _, current_theme = (
-        theme_state() if callable(theme_state) else ({}, "midnight", "midnight")
-    )
-    theme_apply = (
-        apply_theme if callable(apply_theme) else (lambda value, _theme: value)
-    )
-
-    docs_url = settings.get("docs")
-    if docs_url:
-        help_href = theme_apply(docs_url, current_theme)
-    else:
-        help_href = theme_apply(
-            url_for("help_page", slug="hydride_segmentation"), current_theme
-        )
-
-    upload_settings = settings.get("upload", {}) or {}
-    try:
-        max_mb = float(upload_settings.get("max_mb", 5))
-    except (TypeError, ValueError):
-        max_mb = 5.0
-
-    props = {
-        "helpHref": help_href,
-        "maxMb": max_mb,
-    }
-    return renderer("hydride_segmentation", props)
 
 
 def _parse_conventional_params(form) -> ConventionalParams:
@@ -201,9 +150,6 @@ def _serialize_output(result: SegmentationOutput, model: str) -> dict:
 api_bp = Blueprint(
     "hydride_segmentation_api", __name__, url_prefix="/api/hydride_segmentation"
 )
-legacy_bp = Blueprint(
-    "hydride_segmentation_legacy", __name__, url_prefix="/hydride_segmentation/api/v1"
-)
 
 
 @api_bp.post("/segment")
@@ -259,17 +205,7 @@ def warmup() -> Response:
     return ok({"status": "ready"})
 
 
-@legacy_bp.post("/segment")
-def legacy_segment() -> Response:
-    return segment()
+blueprints = [api_bp]
 
 
-@legacy_bp.get("/warmup")
-def legacy_warmup() -> Response:
-    return warmup()
-
-
-blueprints = [ui_bp, api_bp, legacy_bp]
-
-
-__all__ = ["blueprints", "segment", "warmup", "index"]
+__all__ = ["blueprints", "segment", "warmup"]

@@ -1,6 +1,11 @@
-import { FormEvent, useMemo, useState } from "react";
-import { useStatus } from "../hooks/useStatus";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { SettingsModal, type SettingsField } from "../components/SettingsModal";
 import { StatusMessage } from "../components/StatusMessage";
+import { useLoading } from "../contexts/LoadingContext";
+import { usePluginSettings } from "../hooks/usePluginSettings";
+import { useStatus } from "../hooks/useStatus";
+import { useToolSettings } from "../hooks/useToolSettings";
+import { apiFetch } from "../utils/api";
 
 type UnitItem = {
   symbol: string;
@@ -8,10 +13,10 @@ type UnitItem = {
   dimension?: string;
 };
 
-type UnitConverterProps = {
-  families?: string[];
-  units?: Record<string, UnitItem[]>;
-  helpHref?: string;
+type UnitConverterPreferences = {
+  defaultFamily: string;
+  defaultMode: "absolute" | "relative";
+  defaultNotation: "auto" | "fixed" | "scientific" | "engineering";
 };
 
 function formatAliases(aliases?: string[]) {
@@ -21,17 +26,30 @@ function formatAliases(aliases?: string[]) {
   return `Also accepts: ${aliases.join(", ")}`;
 }
 
-export default function UnitConverterPage({ props }: { props: Record<string, unknown> }) {
-  const { families = [], units = {}, helpHref } = props as UnitConverterProps;
-  const [family, setFamily] = useState<string>(families[0] ?? "");
-  const availableUnits = units[family] || [];
-  const [fromUnit, setFromUnit] = useState<string>(availableUnits[0]?.symbol ?? "");
-  const [toUnit, setToUnit] = useState<string>(availableUnits[1]?.symbol ?? availableUnits[0]?.symbol ?? "");
+export default function UnitConverterPage() {
+  const pluginConfig = usePluginSettings<{ docs?: string }>("unit_converter", {});
+  const helpHref = typeof pluginConfig.docs === "string" ? pluginConfig.docs : "/help/unit_converter";
+  const { withLoader } = useLoading();
+  const { settings: preferences, updateSetting, resetSettings } = useToolSettings<UnitConverterPreferences>(
+    "unit_converter",
+    {
+      defaultFamily: "",
+      defaultMode: "absolute",
+      defaultNotation: "auto",
+    },
+  );
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const [families, setFamilies] = useState<string[]>([]);
+  const [units, setUnits] = useState<Record<string, UnitItem[]>>({});
+  const [family, setFamily] = useState<string>(preferences.defaultFamily);
+  const [fromUnit, setFromUnit] = useState<string>("");
+  const [toUnit, setToUnit] = useState<string>("");
   const [value, setValue] = useState<string>("");
-  const [mode, setMode] = useState("absolute");
+  const [mode, setMode] = useState<"absolute" | "relative">(preferences.defaultMode);
   const [sigFigs, setSigFigs] = useState<string>("");
   const [decimals, setDecimals] = useState<string>("");
-  const [notation, setNotation] = useState("auto");
+  const [notation, setNotation] = useState<string>(preferences.defaultNotation);
   const [result, setResult] = useState<string>("");
   const [base, setBase] = useState<string>("");
 
@@ -41,7 +59,7 @@ export default function UnitConverterPage({ props }: { props: Record<string, unk
 
   const [expression, setExpression] = useState("");
   const [expressionTarget, setExpressionTarget] = useState("");
-  const [expressionNotation, setExpressionNotation] = useState("auto");
+  const [expressionNotation, setExpressionNotation] = useState(preferences.defaultNotation);
   const [expressionSigFigs, setExpressionSigFigs] = useState("");
   const [expressionResult, setExpressionResult] = useState<string>("");
   const expressionStatus = useStatus(
@@ -49,13 +67,119 @@ export default function UnitConverterPage({ props }: { props: Record<string, unk
     { context: "Unit Converter · Expression" },
   );
 
-  const familyOptions = useMemo(() => families, [families]);
+  const availableUnits = units[family] || [];
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadFamilies = async () => {
+      try {
+        const data = await withLoader(() =>
+          apiFetch<{ families: string[]; units: Record<string, UnitItem[]> }>(
+            "/api/unit_converter/families",
+          ),
+        );
+        if (cancelled) {
+          return;
+        }
+        setFamilies(data.families);
+        setUnits(data.units);
+        const initialFamily =
+          (preferences.defaultFamily && data.families.includes(preferences.defaultFamily)
+            ? preferences.defaultFamily
+            : data.families[0]) ?? "";
+        setFamily(initialFamily);
+        const items = data.units[initialFamily] || [];
+        setFromUnit(items[0]?.symbol ?? "");
+        setToUnit(items[1]?.symbol ?? items[0]?.symbol ?? "");
+      } catch (error) {
+        if (!cancelled) {
+          converterStatus.setStatus(
+            error instanceof Error ? error.message : "Unable to load unit families",
+            "error",
+          );
+        }
+      }
+    };
+    loadFamilies();
+    return () => {
+      cancelled = true;
+    };
+  }, [converterStatus, preferences.defaultFamily, withLoader]);
+
+  useEffect(() => {
+    if (!families.length) {
+      return;
+    }
+    if (preferences.defaultFamily && families.includes(preferences.defaultFamily)) {
+      setFamily(preferences.defaultFamily);
+    }
+  }, [families, preferences.defaultFamily]);
+
+  useEffect(() => {
+    setMode(preferences.defaultMode);
+  }, [preferences.defaultMode]);
+
+  useEffect(() => {
+    setNotation(preferences.defaultNotation);
+    setExpressionNotation(preferences.defaultNotation);
+  }, [preferences.defaultNotation]);
+
+  useEffect(() => {
+    const items = units[family] || [];
+    if (!items.length) {
+      setFromUnit("");
+      setToUnit("");
+      return;
+    }
+    setFromUnit((prev) => (items.some((item) => item.symbol === prev) ? prev : items[0].symbol));
+    setToUnit((prev) => {
+      if (items.some((item) => item.symbol === prev)) {
+        return prev;
+      }
+      return items[1]?.symbol ?? items[0].symbol;
+    });
+  }, [family, units]);
+
+  const settingsFields = useMemo<SettingsField[]>(
+    () => [
+      {
+        key: "defaultFamily",
+        label: "Default unit family",
+        type: "select",
+        options: [
+          { value: "", label: "Auto-detect from configuration" },
+          ...families.map((item) => ({ value: item, label: item })),
+        ],
+        description: "Family preselected when the workspace loads.",
+      },
+      {
+        key: "defaultMode",
+        label: "Default temperature mode",
+        type: "select",
+        options: [
+          { value: "absolute", label: "Absolute (e.g., K → °C)" },
+          { value: "relative", label: "Interval (ΔK → Δ°C)" },
+        ],
+        description: "Applied to both converters when resetting.",
+      },
+      {
+        key: "defaultNotation",
+        label: "Default notation",
+        type: "select",
+        options: [
+          { value: "auto", label: "Automatic" },
+          { value: "fixed", label: "Fixed" },
+          { value: "scientific", label: "Scientific" },
+          { value: "engineering", label: "Engineering" },
+        ],
+        description: "Formatting used unless overridden in the form.",
+      },
+    ],
+    [families],
+  );
 
   const handleFamilyChange = (next: string) => {
     setFamily(next);
-    const items = units[next] || [];
-    setFromUnit(items[0]?.symbol ?? "");
-    setToUnit(items[1]?.symbol ?? items[0]?.symbol ?? "");
   };
 
   const submitConvert = async (event: FormEvent<HTMLFormElement>) => {
@@ -79,17 +203,26 @@ export default function UnitConverterPage({ props }: { props: Record<string, unk
       if (decimals) {
         payload.decimals = Number.parseInt(decimals, 10);
       }
-      const response = await fetch("/unit_converter/api/v1/convert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Conversion failed");
-      }
+      const data = await withLoader(() =>
+        apiFetch<{
+          value: number;
+          unit: string;
+          formatted: string;
+          base: { value: number; unit: string };
+        }>("/api/unit_converter/convert", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+      );
       setResult(`${value.trim()} ${fromUnit} = ${data.formatted} ${data.unit}`);
-      setBase(`Base quantity: ${data.base.value.toPrecision(6)} ${data.base.unit}`);
+      const baseValue = Number(data.base?.value);
+      const baseUnit = data.base?.unit ?? "";
+      const baseDisplay = Number.isFinite(baseValue)
+        ? baseValue.toPrecision(6)
+        : String(data.base?.value ?? "");
+      const baseText = baseUnit ? `${baseDisplay} ${baseUnit}` : baseDisplay;
+      setBase(`Base quantity: ${baseText}`.trim());
       converterStatus.setStatus("Conversion complete", "success");
     } catch (error) {
       converterStatus.setStatus(error instanceof Error ? error.message : "Conversion failed", "error");
@@ -100,8 +233,8 @@ export default function UnitConverterPage({ props }: { props: Record<string, unk
     setValue("");
     setSigFigs("");
     setDecimals("");
-    setNotation("auto");
-    setMode("absolute");
+    setNotation(preferences.defaultNotation);
+    setMode(preferences.defaultMode);
     setResult("");
     setBase("");
     converterStatus.setStatus("Ready", "info");
@@ -125,15 +258,13 @@ export default function UnitConverterPage({ props }: { props: Record<string, unk
       if (expressionSigFigs.trim()) {
         payload.sig_figs = Number.parseInt(expressionSigFigs.trim(), 10);
       }
-      const response = await fetch("/unit_converter/api/v1/expressions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Expression evaluation failed");
-      }
+      const data = await withLoader(() =>
+        apiFetch<{ formatted: string; unit: string }>("/api/unit_converter/expressions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+      );
       setExpressionResult(`${expression.trim()} → ${data.formatted} ${data.unit}`);
       expressionStatus.setStatus("Expression evaluated", "success");
     } catch (error) {
@@ -144,7 +275,7 @@ export default function UnitConverterPage({ props }: { props: Record<string, unk
   const resetExpression = () => {
     setExpression("");
     setExpressionTarget("");
-    setExpressionNotation("auto");
+    setExpressionNotation(preferences.defaultNotation);
     setExpressionSigFigs("");
     setExpressionResult("");
     expressionStatus.setStatus("Ready", "info");
@@ -173,6 +304,9 @@ export default function UnitConverterPage({ props }: { props: Record<string, unk
             <li>Evaluate composite expressions such as <code>5 kJ/mol to eV</code></li>
           </ul>
           <div className="tool-shell__actions">
+            <button className="btn btn--ghost" type="button" onClick={() => setSettingsOpen(true)}>
+              ⚙️ Settings
+            </button>
             <a className="btn btn--subtle" data-keep-theme href={typeof helpHref === "string" ? helpHref : "/help/unit_converter"}>
               Read conversion guide
             </a>
@@ -201,11 +335,15 @@ export default function UnitConverterPage({ props }: { props: Record<string, unk
                   onChange={(event) => handleFamilyChange(event.target.value)}
                   required
                 >
-                  {familyOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())}
-                    </option>
-                  ))}
+                  {families.length ? (
+                    families.map((option) => (
+                      <option key={option} value={option}>
+                        {option.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No families available</option>
+                  )}
                 </select>
               </div>
               <div className="form-field">
@@ -276,9 +414,14 @@ export default function UnitConverterPage({ props }: { props: Record<string, unk
                 <label className="form-field__label" htmlFor="mode">
                   Conversion mode
                 </label>
-                <select id="mode" name="mode" value={mode} onChange={(event) => setMode(event.target.value)}>
+                <select
+                  id="mode"
+                  name="mode"
+                  value={mode}
+                  onChange={(event) => setMode(event.target.value as "absolute" | "relative")}
+                >
                   <option value="absolute">Absolute (default)</option>
-                  <option value="interval">Interval / delta</option>
+                  <option value="relative">Interval / delta</option>
                 </select>
                 <p className="form-field__hint">Interval mode keeps offsets for temperature differences.</p>
               </div>
@@ -453,6 +596,18 @@ export default function UnitConverterPage({ props }: { props: Record<string, unk
           </section>
         </div>
       </div>
+      <SettingsModal
+        isOpen={settingsOpen}
+        title="Unit converter preferences"
+        description="Configure default unit family, mode, and notation."
+        fields={settingsFields}
+        values={preferences}
+        onChange={(key, value) =>
+          updateSetting(key as keyof UnitConverterPreferences, value as UnitConverterPreferences[keyof UnitConverterPreferences])
+        }
+        onReset={() => resetSettings()}
+        onClose={() => setSettingsOpen(false)}
+      />
     </section>
   );
 }
