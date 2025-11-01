@@ -1,7 +1,10 @@
 import { ChangeEvent, FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { ChartPanel } from "../components/ChartPanel";
+import tabularIcon from "../assets/tabular_icon.svg";
+import { Dropzone } from "../components/Dropzone";
 import { SettingsModal, type SettingsField } from "../components/SettingsModal";
 import { StatusMessage } from "../components/StatusMessage";
+import { ToolShell, ToolShellIntro } from "../components/ToolShell";
 import { useLoading } from "../contexts/LoadingContext";
 import { usePluginSettings } from "../hooks/usePluginSettings";
 import { useStatus } from "../hooks/useStatus";
@@ -617,93 +620,93 @@ export default function TabularMlPage() {
 
   return (
     <section className="shell surface-block tabular-shell" aria-labelledby="tabular-ml-title">
-      <div className="tool-shell__layout">
-        <aside className="tool-shell__intro">
-          <div className="tool-shell__icon" aria-hidden="true">
-            <img src="/tabular_ml/static/img/tabular_icon.svg" alt="" />
-          </div>
-          <p className="tool-card__category">Machine Learning</p>
-          <h1 id="tabular-ml-title" className="section-heading">
-            Tabular ML sandbox
-          </h1>
-          <p>
-            Load CSV datasets entirely in memory, preview records, render interactive charts, and train lightweight models.
-            All computations stay in this offline browser session.
-          </p>
-          <ul>
-            <li>Column statistics with quick scatter and histogram visualisations</li>
-            <li>Automatic task detection with exportable prediction previews</li>
-            <li>Single-row inference plus batch CSV predictions</li>
-          </ul>
-          <div className="tool-shell__actions">
-            <button className="btn btn--ghost" type="button" onClick={() => setSettingsOpen(true)}>
-              ⚙️ Settings
-            </button>
-            <a className="btn btn--subtle" data-keep-theme href={helpHref}>
-              Read ML guide
-            </a>
-          </div>
-        </aside>
-
-        <div className="tool-shell__workspace">
-          <form id="dataset-form" className="surface-muted form-grid" onSubmit={submitDataset}>
-            <div
-              className={`dropzone${datasetName ? " has-file" : ""}`}
-              id="dataset-dropzone"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (event.dataTransfer?.files) {
-                  handleDatasetFiles(event.dataTransfer.files);
+      <ToolShell
+        intro={
+          <ToolShellIntro
+            icon={tabularIcon}
+            titleId="tabular-ml-title"
+            category="Machine Learning"
+            title="Tabular ML sandbox"
+            summary="Load CSV datasets entirely in memory, preview records, render interactive charts, and train lightweight models. All computations stay in this offline browser session."
+            bullets={[
+              "Column statistics with quick scatter and histogram visualisations",
+              "Automatic task detection with exportable prediction previews",
+              "Single-row inference plus batch CSV predictions",
+            ]}
+            actions={
+              <>
+                <button className="btn btn--ghost" type="button" onClick={() => setSettingsOpen(true)}>
+                  ⚙️ Settings
+                </button>
+                <a className="btn btn--subtle" data-keep-theme href={helpHref}>
+                  Read ML guide
+                </a>
+              </>
+            }
+          />
+        }
+        workspace={
+          <div className="tool-shell__workspace">
+            <form id="dataset-form" className="surface-muted form-grid" onSubmit={submitDataset}>
+              <Dropzone
+                id="dataset-dropzone"
+                hasFile={Boolean(datasetName)}
+                onDropFiles={(files) => {
+                  handleDatasetFiles(files);
                   if (datasetInputRef.current) {
-                    datasetInputRef.current.files = event.dataTransfer.files;
+                    datasetInputRef.current.files = files;
                   }
+                }}
+                copy={
+                  <>
+                    <h2 className="section-heading">Load CSV dataset</h2>
+                    <p className="dropzone__hint">
+                      Data remains in this session. Max size {uploadLimit.maxMb} MB. Ensure the first row contains column headers.
+                    </p>
+                    <p className="dropzone__hint" id="dataset-name" aria-live="polite">
+                      {datasetName}
+                    </p>
+                  </>
                 }
-              }}
-            >
-              <div className="dropzone__copy">
-                <h2 className="section-heading">Load CSV dataset</h2>
-                <p className="dropzone__hint">
-                  Data remains in this session. Max size {uploadLimit.maxMb} MB. Ensure the first row contains column headers.
-                </p>
-                <p className="dropzone__hint" id="dataset-name" aria-live="polite">
-                  {datasetName}
-                </p>
-              </div>
-              <div className="dropzone__actions">
-                <button className="btn" type="button" id="dataset-browse" onClick={() => datasetInputRef.current?.click()}>
-                  Browse CSV
+                actions={
+                  <>
+                    <button className="btn" type="button" id="dataset-browse" onClick={() => datasetInputRef.current?.click()}>
+                      Browse CSV
+                    </button>
+                  </>
+                }
+              >
+                <input
+                  id="dataset"
+                  name="dataset"
+                  ref={datasetInputRef}
+                  type="file"
+                  accept="text/csv,application/vnd.ms-excel"
+                  className="visually-hidden"
+                  required
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    event.target.files && handleDatasetFiles(event.target.files)
+                  }
+                />
+              </Dropzone>
+              <div className="form-actions">
+                <button className="btn" type="submit">
+                  Load dataset
+                </button>
+                <button
+                  className="btn btn--ghost"
+                  type="reset"
+                  id="dataset-reset"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    clearDataset();
+                  }}
+                >
+                  Reset
                 </button>
               </div>
-              <input
-                id="dataset"
-                name="dataset"
-                ref={datasetInputRef}
-                type="file"
-                accept="text/csv,application/vnd.ms-excel"
-                className="visually-hidden"
-                required
-                onChange={(event: ChangeEvent<HTMLInputElement>) => event.target.files && handleDatasetFiles(event.target.files)}
-              />
-            </div>
-            <div className="form-actions">
-              <button className="btn" type="submit">
-                Load dataset
-              </button>
-              <button
-                className="btn btn--ghost"
-                type="reset"
-                id="dataset-reset"
-                onClick={(event) => {
-                  event.preventDefault();
-                  clearDataset();
-                }}
-              >
-                Reset
-              </button>
-            </div>
-            <StatusMessage status={datasetStatus.status} />
-          </form>
+              <StatusMessage status={datasetStatus.status} />
+            </form>
 
           {dataset ? (
             <section id="dataset-overview" className="surface-muted tabular-overview" aria-live="polite">
@@ -1113,7 +1116,8 @@ export default function TabularMlPage() {
             </section>
           ) : null}
         </div>
-      </div>
+        }
+      />
 
       <SettingsModal
         isOpen={settingsOpen}

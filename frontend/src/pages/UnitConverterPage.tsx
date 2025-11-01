@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import unitConverterIcon from "../assets/unit_converter_icon.png";
 import { SettingsModal, type SettingsField } from "../components/SettingsModal";
 import { StatusMessage } from "../components/StatusMessage";
+import { ToolShell, ToolShellIntro } from "../components/ToolShell";
 import { useLoading } from "../contexts/LoadingContext";
 import { usePluginSettings } from "../hooks/usePluginSettings";
 import { useStatus } from "../hooks/useStatus";
@@ -286,34 +288,33 @@ export default function UnitConverterPage() {
 
   return (
     <section className="shell surface-block" aria-labelledby="unit-converter-title">
-      <div className="tool-shell__layout">
-        <aside className="tool-shell__intro">
-          <div className="tool-shell__icon" aria-hidden="true">
-            <img src="/unit_converter/static/img/UnitConverter_icon.png" alt="" />
-          </div>
-          <p className="tool-card__category">General Utilities</p>
-          <h1 id="unit-converter-title" className="section-heading">
-            Scientific unit converter
-          </h1>
-          <p>
-            Convert between laboratory units, inspect base quantities, and validate interval calculations without leaving the offline workspace. Choose a unit family, configure precision and notation, and view the converted value alongside the base SI representation.
-          </p>
-          <ul>
-            <li>Unit registry powered by Pint with engineering materials presets</li>
-            <li>Toggle between absolute and interval temperature conversions</li>
-            <li>Evaluate composite expressions such as <code>5 kJ/mol to eV</code></li>
-          </ul>
-          <div className="tool-shell__actions">
-            <button className="btn btn--ghost" type="button" onClick={() => setSettingsOpen(true)}>
-              ⚙️ Settings
-            </button>
-            <a className="btn btn--subtle" data-keep-theme href={typeof helpHref === "string" ? helpHref : "/help/unit_converter"}>
-              Read conversion guide
-            </a>
-          </div>
-        </aside>
-
-        <div className="tool-shell__workspace">
+      <ToolShell
+        intro={
+          <ToolShellIntro
+            icon={unitConverterIcon}
+            titleId="unit-converter-title"
+            category="General Utilities"
+            title="Scientific unit converter"
+            summary="Convert between laboratory units, inspect base quantities, and validate interval calculations without leaving the offline workspace. Choose a unit family, configure precision and notation, and view the converted value alongside the base SI representation."
+            bullets={[
+              "Unit registry powered by Pint with engineering materials presets",
+              "Toggle between absolute and interval temperature conversions",
+              <>Evaluate composite expressions such as <code>5 kJ/mol to eV</code></>,
+            ]}
+            actions={
+              <>
+                <button className="btn btn--ghost" type="button" onClick={() => setSettingsOpen(true)}>
+                  ⚙️ Settings
+                </button>
+                <a className="btn btn--subtle" data-keep-theme href={typeof helpHref === "string" ? helpHref : "/help/unit_converter"}>
+                  Read conversion guide
+                </a>
+              </>
+            }
+          />
+        }
+        workspace={
+          <div className="tool-shell__workspace">
           <form id="converter-form" className="surface-muted form-grid" onSubmit={submitConvert}>
             <div className="input-grid">
               <div className="form-field">
@@ -595,7 +596,8 @@ export default function UnitConverterPage() {
             </div>
           </section>
         </div>
-      </div>
+        }
+      />
       <SettingsModal
         isOpen={settingsOpen}
         title="Unit converter preferences"

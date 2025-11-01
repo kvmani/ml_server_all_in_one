@@ -38,3 +38,8 @@ plugins:
   unit_converter:
     docs: "/help/unit_converter"
     summary: "Pint-backed conversions with interval support and expression evaluation."
+  super_resolution:
+    summary: "Upscale microscopy imagery offline with configurable resampling."
+    upload:
+      max_files: 1
+      max_mb: 8

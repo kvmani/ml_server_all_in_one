@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type SettingsState<T> = {
   settings: T;
@@ -6,50 +6,40 @@ type SettingsState<T> = {
   resetSettings: () => void;
 };
 
-function readStorage<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") {
-    return fallback;
-  }
-  try {
-    const stored = window.localStorage.getItem(key);
-    if (!stored) {
-      return fallback;
-    }
-    const parsed = JSON.parse(stored) as Partial<T>;
-    return { ...fallback, ...parsed };
-  } catch (error) {
-    return fallback;
-  }
-}
+export function useToolSettings<T extends Record<string, unknown>>(_slug: string, defaults: T): SettingsState<T> {
+  const defaultsRef = useRef(defaults);
+  const [settings, setSettings] = useState<T>(() => ({ ...defaults }));
 
-export function useToolSettings<T extends Record<string, unknown>>(slug: string, defaults: T): SettingsState<T> {
-  const storageKey = useMemo(() => `ml-server-settings:${slug}`, [slug]);
-  const [settings, setSettings] = useState<T>(() => readStorage(storageKey, defaults));
-
-  const persist = useCallback(
-    (next: T) => {
-      setSettings(next);
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem(storageKey, JSON.stringify(next));
-        } catch (error) {
-          // Ignore storage quota issues in restricted environments
-        }
+  useEffect(() => {
+    const previous = defaultsRef.current;
+    const next = defaults;
+    const keys = new Set<keyof T>([
+      ...(Object.keys(previous) as Array<keyof T>),
+      ...(Object.keys(next) as Array<keyof T>),
+    ]);
+    let changed = false;
+    for (const key of keys) {
+      if (previous[key] !== next[key]) {
+        changed = true;
+        break;
       }
-    },
-    [storageKey],
-  );
+    }
+    if (changed) {
+      defaultsRef.current = next;
+      setSettings((current) => ({ ...next, ...current }));
+    }
+  }, [defaults]);
 
   const updateSetting = useCallback(
     (key: keyof T, value: T[keyof T]) => {
-      persist({ ...settings, [key]: value });
+      setSettings((current) => ({ ...current, [key]: value }));
     },
-    [persist, settings],
+    [],
   );
 
   const resetSettings = useCallback(() => {
-    persist({ ...defaults });
-  }, [defaults, persist]);
+    setSettings({ ...defaultsRef.current });
+  }, []);
 
   return { settings, updateSetting, resetSettings };
 }

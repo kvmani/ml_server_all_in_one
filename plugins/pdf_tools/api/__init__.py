@@ -205,4 +205,4 @@ def metadata() -> Response:
 blueprints = [api_bp]
 
 
-__all__ = ["blueprints", "merge", "split", "metadata", "index"]
+__all__ = ["blueprints", "merge", "split", "metadata"]

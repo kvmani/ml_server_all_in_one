@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import hydrideIcon from "../assets/hydride_icon.svg";
+import pdfToolsIcon from "../assets/pdf_tools_icon.png";
+import tabularIcon from "../assets/tabular_icon.svg";
+import unitConverterIcon from "../assets/unit_converter_icon.png";
 import type { PluginManifest } from "../types";
 import { useAppContext } from "../contexts/AppContext";
 
@@ -8,6 +12,13 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   "Document Utilities": "Fast, offline-safe document manipulation with drag-and-drop simplicity.",
   "Machine Learning": "In-browser model training pipelines optimised for tabular datasets.",
   "General Utilities": "Everyday laboratory helpers with instant validation and clarity.",
+};
+
+const ICON_MAP: Record<string, string> = {
+  hydride_segmentation: hydrideIcon,
+  pdf_tools: pdfToolsIcon,
+  tabular_ml: tabularIcon,
+  unit_converter: unitConverterIcon,
 };
 
 function normaliseCategory(category?: string | null) {
@@ -224,7 +235,7 @@ export default function HomePage() {
                 <div className="card-grid" role="list" data-tool-section={category}>
                   {items.map((plugin, index) => {
                     const hue = iconHues[index % iconHues.length];
-                    const iconUrl = plugin.icon ? `/${plugin.blueprint}/static/${plugin.icon}` : null;
+                    const iconUrl = ICON_MAP[plugin.blueprint] || (plugin.icon ? `/${plugin.blueprint}/static/${plugin.icon}` : null);
                     return (
                       <article
                         key={plugin.blueprint}

@@ -1,6 +1,10 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import hydrideIcon from "../assets/hydride_icon.svg";
+import hydrideSample from "../assets/hydride_sample.png";
+import { Dropzone } from "../components/Dropzone";
 import { SettingsModal, type SettingsField } from "../components/SettingsModal";
 import { StatusMessage } from "../components/StatusMessage";
+import { ToolShell, ToolShellIntro } from "../components/ToolShell";
 import { useLoading } from "../contexts/LoadingContext";
 import { usePluginSettings } from "../hooks/usePluginSettings";
 import { useStatus } from "../hooks/useStatus";
@@ -29,8 +33,7 @@ type SegmentationResult = {
   parameters: Record<string, unknown>;
 };
 
-const SAMPLE_IMAGE = "/hydride_segmentation/static/img/hydride_sample.png";
-const TOOL_ICON = "/hydride_segmentation/static/img/hydride_icon.svg";
+const SAMPLE_IMAGE = hydrideSample;
 
 const DEFAULTS = {
   model: "conventional",
@@ -203,13 +206,6 @@ export default function HydrideSegmentationPage() {
     [imagePreview, maxMb, status],
   );
 
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    if (event.dataTransfer?.files) {
-      onFilesSelected(event.dataTransfer.files);
-    }
-  };
-
   const handleBrowse = () => {
     fileInputRef.current?.click();
   };
@@ -317,76 +313,87 @@ export default function HydrideSegmentationPage() {
 
   return (
     <section className="shell surface-block hydride-shell" aria-labelledby="hydride-title">
-      <div className="tool-shell__layout">
-        <aside className="tool-shell__intro">
-          <div className="tool-shell__icon" aria-hidden="true">
-            <img src={TOOL_ICON} alt="" />
-          </div>
-          <p className="tool-card__category">Microstructural Analysis</p>
-          <h1 id="hydride-title" className="section-heading">
-            Hydride segmentation workstation
-          </h1>
-          <p>
-            Upload zirconium alloy microscopy images, tune the segmentation pipeline, and review high-resolution overlays, histograms, and quantitative metrics. Everything executes locally with no data persistence.
-          </p>
-          <ul>
-            <li>Drag &amp; drop microscopy files or browse from disk</li>
-            <li>Tooltips describe every parameter and default ranges</li>
-            <li>Result history allows undo / redo across segmentation runs</li>
-          </ul>
-          <div className="tool-shell__actions">
-            <button className="btn btn--ghost" type="button" onClick={() => setSettingsOpen(true)}>
-              ⚙️ Settings
-            </button>
-            <a className="btn btn--subtle" data-keep-theme href={typeof helpHref === "string" ? helpHref : "/help/hydride_segmentation"}>
-              Read hydride guide
-            </a>
-          </div>
-          <div className="surface-muted">
-            <p className="form-field__hint">Supported formats: PNG, JPEG, TIFF. Maximum size {maxMb} MB.</p>
-            <div className="tag-list">
-              <span className="badge">Offline inference</span>
-              <span className="badge">On-device rendering</span>
-            </div>
-          </div>
-        </aside>
-
-        <form id="segment-form" className="form-grid tool-shell__workspace" onSubmit={submitSegmentation}>
-          <section className="surface-muted">
-            <h2 className="form-section__title">Microscopy input</h2>
-            <div
-              className={`dropzone${imageFile ? " has-file" : ""}`}
-              id="image-dropzone"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={handleDrop}
-            >
-              <div className="dropzone__preview" aria-hidden="true">
-                <img id="image-preview" src={imagePreview} alt="Sample microscopy placeholder" style={brightnessStyle} />
-              </div>
-              <div className="dropzone__copy">
-                <h3 className="section-heading">Drop microscopy image here</h3>
-                <p className="dropzone__hint">PNG, JPEG, or TIFF up to {maxMb} MB. Your files never leave this workstation.</p>
-              </div>
-              <div className="dropzone__actions">
-                <button className="btn" type="button" id="image-browse" onClick={handleBrowse}>
-                  Browse file
+      <ToolShell
+        intro={
+          <ToolShellIntro
+            icon={hydrideIcon}
+            titleId="hydride-title"
+            category="Microstructural Analysis"
+            title="Hydride segmentation workstation"
+            summary="Upload zirconium alloy microscopy images, tune the segmentation pipeline, and review high-resolution overlays, histograms, and quantitative metrics. Everything executes locally with no data persistence."
+            bullets={[
+              "Drag & drop microscopy files or browse from disk",
+              "Tooltips describe every parameter and default ranges",
+              "Result history allows undo / redo across segmentation runs",
+            ]}
+            actions={
+              <>
+                <button className="btn btn--ghost" type="button" onClick={() => setSettingsOpen(true)}>
+                  ⚙️ Settings
                 </button>
-                <button className="btn btn--ghost" type="button" id="image-reset" onClick={resetImagePreview}>
-                  Reset sample
-                </button>
+                <a className="btn btn--subtle" data-keep-theme href={typeof helpHref === "string" ? helpHref : "/help/hydride_segmentation"}>
+                  Read hydride guide
+                </a>
+              </>
+            }
+            footer={
+              <div className="surface-muted">
+                <p className="form-field__hint">Supported formats: PNG, JPEG, TIFF. Maximum size {maxMb} MB.</p>
+                <div className="tag-list">
+                  <span className="badge">Offline inference</span>
+                  <span className="badge">On-device rendering</span>
+                </div>
               </div>
-              <input
-                id="image"
-                name="image"
-                type="file"
-                accept="image/png,image/jpeg,image/tiff"
-                className="visually-hidden"
-                ref={fileInputRef}
-                onChange={(event) => event.target.files && onFilesSelected(event.target.files)}
-                required={!imageFile}
-              />
-            </div>
-            <StatusMessage status={status.status} />
+            }
+          />
+        }
+        workspace={
+          <form id="segment-form" className="form-grid tool-shell__workspace" onSubmit={submitSegmentation}>
+            <section className="surface-muted">
+              <h2 className="form-section__title">Microscopy input</h2>
+              <Dropzone
+                id="image-dropzone"
+                hasFile={Boolean(imageFile)}
+                onDropFiles={(files) => onFilesSelected(files)}
+                preview={
+                  <img
+                    id="image-preview"
+                    src={imagePreview}
+                    alt="Sample microscopy placeholder"
+                    style={brightnessStyle}
+                  />
+                }
+                copy={
+                  <>
+                    <h3 className="section-heading">Drop microscopy image here</h3>
+                    <p className="dropzone__hint">
+                      PNG, JPEG, or TIFF up to {maxMb} MB. Your files never leave this workstation.
+                    </p>
+                  </>
+                }
+                actions={
+                  <>
+                    <button className="btn" type="button" id="image-browse" onClick={handleBrowse}>
+                      Browse file
+                    </button>
+                    <button className="btn btn--ghost" type="button" id="image-reset" onClick={resetImagePreview}>
+                      Reset sample
+                    </button>
+                  </>
+                }
+              >
+                <input
+                  id="image"
+                  name="image"
+                  type="file"
+                  accept="image/png,image/jpeg,image/tiff"
+                  className="visually-hidden"
+                  ref={fileInputRef}
+                  onChange={(event) => event.target.files && onFilesSelected(event.target.files)}
+                  required={!imageFile}
+                />
+              </Dropzone>
+              <StatusMessage status={status.status} />
           </section>
 
           <section className="surface-muted">
@@ -727,8 +734,9 @@ export default function HydrideSegmentationPage() {
               </section>
             </section>
           )}
-        </form>
-      </div>
+          </form>
+        }
+      />
       <SettingsModal
         isOpen={settingsOpen}
         title="Hydride segmentation preferences"
