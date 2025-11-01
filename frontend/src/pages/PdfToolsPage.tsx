@@ -1,6 +1,9 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import pdfToolsIcon from "../assets/pdf_tools_icon.png";
+import { Dropzone } from "../components/Dropzone";
 import { SettingsModal, type SettingsField } from "../components/SettingsModal";
 import { StatusMessage } from "../components/StatusMessage";
+import { ToolShell, ToolShellIntro } from "../components/ToolShell";
 import { useLoading } from "../contexts/LoadingContext";
 import { usePluginSettings } from "../hooks/usePluginSettings";
 import { useStatus } from "../hooks/useStatus";
@@ -234,11 +237,9 @@ export default function PdfToolsPage() {
     [addEntries],
   );
 
-  const handleDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      const files = Array.from(event.dataTransfer?.files || []);
-      addEntries(files);
+  const handleMergeDrop = useCallback(
+    (files: FileList) => {
+      addEntries(Array.from(files || []));
     },
     [addEntries],
   );
@@ -324,13 +325,12 @@ export default function PdfToolsPage() {
   );
 
   const onSplitDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      const files = Array.from(event.dataTransfer?.files || []);
-      if (!files.length) {
+    (files: FileList) => {
+      const list = Array.from(files || []);
+      if (!list.length) {
         return;
       }
-      const file = files[0];
+      const file = list[0];
       if (!file.type.includes("pdf") && !file.name.toLowerCase().endsWith(".pdf")) {
         splitStatus.setStatus("Unsupported file format. Please upload PDF files only.", "error");
         return;
@@ -386,93 +386,99 @@ export default function PdfToolsPage() {
 
   return (
     <section className="shell surface-block pdf-shell" aria-labelledby="pdf-tools-title">
-      <div className="tool-shell__layout">
-        <aside className="tool-shell__intro">
-          <div className="tool-shell__icon" aria-hidden="true">
-            <img src="/pdf_tools/static/img/pdf_tools_icon.png" alt="" />
-          </div>
-          <p className="tool-card__category">Document Utilities</p>
-          <h1 id="pdf-tools-title" className="section-heading">
-            PDF toolkit workspace
-          </h1>
-          <p>
-            Reorder, merge, and split PDF documents entirely in-memory. Drag files into the workspace to queue them, define page ranges with inline validation, and export results instantly.
-          </p>
-          <ul>
-            <li>Supports drag &amp; drop or secure file browsing</li>
-            <li>Granular page ranges with per-file tooltips</li>
-            <li>Instant first-page thumbnails with inline full previews</li>
-            <li>Instant downloads without server persistence</li>
-          </ul>
-          <div className="tool-shell__actions">
-            <button className="btn btn--ghost" type="button" onClick={() => setSettingsOpen(true)}>
-              ⚙️ Settings
-            </button>
-            <a className="btn btn--subtle" data-keep-theme href={typeof helpHref === "string" ? helpHref : "/help/pdf_tools"}>
-              Read PDF guide
-            </a>
-          </div>
-          <div className="surface-muted">
-            <p className="form-field__hint">
-              Merge up to {mergeLimit.maxFiles} PDFs ({mergeLimit.maxMb} MB each). Split accepts one PDF up to {splitLimit.maxMb} MB.
-            </p>
-            <div className="tag-list">
-              <span className="badge">Offline merge</span>
-              <span className="badge">Queue reordering</span>
-            </div>
-          </div>
-        </aside>
-
-        <div className="tool-shell__workspace">
-          <form id="merge-form" className="surface-muted merge-panel" aria-describedby="merge-status" onSubmit={onMergeSubmit}>
-            <header className="merge-panel__header">
-              <div>
-                <p className="tool-card__category">Merge PDFs</p>
-                <h2 className="form-section__title">Build a combined document</h2>
+      <ToolShell
+        intro={
+          <ToolShellIntro
+            icon={pdfToolsIcon}
+            titleId="pdf-tools-title"
+            category="Document Utilities"
+            title="PDF toolkit workspace"
+            summary="Reorder, merge, and split PDF documents entirely in-memory. Drag files into the workspace to queue them, define page ranges with inline validation, and export results instantly."
+            bullets={[
+              "Supports drag & drop or secure file browsing",
+              "Granular page ranges with per-file tooltips",
+              "Instant first-page thumbnails with inline full previews",
+              "Instant downloads without server persistence",
+            ]}
+            actions={
+              <>
+                <button className="btn btn--ghost" type="button" onClick={() => setSettingsOpen(true)}>
+                  ⚙️ Settings
+                </button>
+                <a className="btn btn--subtle" data-keep-theme href={typeof helpHref === "string" ? helpHref : "/help/pdf_tools"}>
+                  Read PDF guide
+                </a>
+              </>
+            }
+            footer={
+              <div className="surface-muted">
+                <p className="form-field__hint">
+                  Merge up to {mergeLimit.maxFiles} PDFs ({mergeLimit.maxMb} MB each). Split accepts one PDF up to {splitLimit.maxMb} MB.
+                </p>
+                <div className="tag-list">
+                  <span className="badge">Offline merge</span>
+                  <span className="badge">Queue reordering</span>
+                </div>
               </div>
-              <div className="merge-output">
-                <label className="form-field__label" htmlFor="merge-output">
-                  Output filename
-                  <button
-                    type="button"
-                    className="tooltip-trigger"
-                    aria-label="Output filename help"
-                    data-tooltip={`Use .pdf extension. Default name is ${preferences.defaultOutputName}.`}
-                  >
-                    ?
-                  </button>
-                </label>
-                <input
-                  id="merge-output"
-                  type="text"
-                  value={outputName}
-                  onChange={(event) => setOutputName(event.target.value)}
-                  placeholder={preferences.defaultOutputName}
-                  autoComplete="off"
-                />
-              </div>
+            }
+          />
+        }
+        workspace={
+          <div className="tool-shell__workspace">
+            <form id="merge-form" className="surface-muted merge-panel" aria-describedby="merge-status" onSubmit={onMergeSubmit}>
+              <header className="merge-panel__header">
+                <div>
+                  <p className="tool-card__category">Merge PDFs</p>
+                  <h2 className="form-section__title">Build a combined document</h2>
+                </div>
+                <div className="merge-output">
+                  <label className="form-field__label" htmlFor="merge-output">
+                    Output filename
+                    <button
+                      type="button"
+                      className="tooltip-trigger"
+                      aria-label="Output filename help"
+                      data-tooltip={`Use .pdf extension. Default name is ${preferences.defaultOutputName}.`}
+                    >
+                      ?
+                    </button>
+                  </label>
+                  <input
+                    id="merge-output"
+                    type="text"
+                    value={outputName}
+                    onChange={(event) => setOutputName(event.target.value)}
+                    placeholder={preferences.defaultOutputName}
+                    autoComplete="off"
+                  />
+                </div>
             </header>
 
-            <div
-              className={`dropzone${entries.length ? " has-file" : ""}`}
+            <Dropzone
               id="merge-dropzone"
+              hasFile={Boolean(entries.length)}
               data-max-files={mergeLimit.maxFiles}
               data-max-mb={mergeLimit.maxMb}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={handleDrop}
+              onDropFiles={handleMergeDrop}
+              copy={
+                <>
+                  <h3 className="section-heading">Drop PDFs to queue</h3>
+                  <p className="dropzone__hint">
+                    Drag up to {mergeLimit.maxFiles} PDFs ({mergeLimit.maxMb} MB each) or use the Add files button.
+                  </p>
+                </>
+              }
+              actions={
+                <>
+                  <button className="btn" type="button" id="add-merge-files" onClick={() => pickerRef.current?.click()}>
+                    Add files
+                  </button>
+                  <button className="btn btn--ghost" type="button" id="clear-merge" onClick={clearEntries}>
+                    Clear queue
+                  </button>
+                </>
+              }
             >
-              <div className="dropzone__copy">
-                <h3 className="section-heading">Drop PDFs to queue</h3>
-                <p className="dropzone__hint">Drag up to {mergeLimit.maxFiles} PDFs ({mergeLimit.maxMb} MB each) or use the Add files button.</p>
-              </div>
-              <div className="dropzone__actions">
-                <button className="btn" type="button" id="add-merge-files" onClick={() => pickerRef.current?.click()}>
-                  Add files
-                </button>
-                <button className="btn btn--ghost" type="button" id="clear-merge" onClick={clearEntries}>
-                  Clear queue
-                </button>
-              </div>
               <input
                 id="merge-picker"
                 ref={pickerRef}
@@ -482,7 +488,7 @@ export default function PdfToolsPage() {
                 className="visually-hidden"
                 onChange={handleFileInput}
               />
-            </div>
+            </Dropzone>
 
             <div id="merge-entries" className="merge-entries" aria-live="polite">
               {entries.map((entry, index) => (
@@ -617,23 +623,26 @@ export default function PdfToolsPage() {
               <h2 className="form-section__title">Export each page</h2>
             </header>
             <form id="split-form" className="form-grid" onSubmit={onSplitSubmit}>
-              <div
-                className={`dropzone${splitFile ? " has-file" : ""}`}
+              <Dropzone
                 id="split-dropzone"
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={onSplitDrop}
+                hasFile={Boolean(splitFile)}
+                onDropFiles={onSplitDrop}
+                copy={
+                  <>
+                    <h3 className="section-heading">Drop a PDF to split</h3>
+                    <p className="dropzone__hint">
+                      Each page becomes an individual download. Single file up to {splitLimit.maxMb} MB.
+                    </p>
+                  </>
+                }
+                actions={
+                  <>
+                    <button className="btn" type="button" id="split-browse" onClick={() => splitPickerRef.current?.click()}>
+                      Choose PDF
+                    </button>
+                  </>
+                }
               >
-                <div className="dropzone__copy">
-                  <h3 className="section-heading">Drop a PDF to split</h3>
-                  <p className="dropzone__hint">
-                    Each page becomes an individual download. Single file up to {splitLimit.maxMb} MB.
-                  </p>
-                </div>
-                <div className="dropzone__actions">
-                  <button className="btn" type="button" id="split-browse" onClick={() => splitPickerRef.current?.click()}>
-                    Choose PDF
-                  </button>
-                </div>
                 <input
                   id="split-file"
                   name="file"
@@ -643,7 +652,7 @@ export default function PdfToolsPage() {
                   ref={splitPickerRef}
                   onChange={onSplitChange}
                 />
-              </div>
+              </Dropzone>
               <StatusMessage status={splitStatus.status} />
               <div id="split-results" className="surface-muted split-results" hidden={!splitPages.length}>
                 <h3 className="form-section__title">Pages ready</h3>
@@ -664,7 +673,8 @@ export default function PdfToolsPage() {
             </form>
           </section>
         </div>
-      </div>
+        }
+      />
       <SettingsModal
         isOpen={settingsOpen}
         title="PDF toolkit preferences"

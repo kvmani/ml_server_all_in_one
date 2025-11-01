@@ -36,18 +36,8 @@ from ..core import (
 
 def _upload_limits() -> FileLimit:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("tabular_ml", {})
-    upload = settings.get("upload", {})
-    max_mb = upload.get("max_mb", 2)
-    try:
-        max_bytes = int(float(max_mb) * 1024 * 1024)
-    except (TypeError, ValueError):
-        max_bytes = 2 * 1024 * 1024
-    max_files = upload.get("max_files", 1)
-    try:
-        max_files_int = int(max_files)
-    except (TypeError, ValueError):
-        max_files_int = 1
-    return FileLimit(max_files=max_files_int or 1, max_size=max_bytes)
+    upload = settings.get("upload")
+    return FileLimit.from_settings(upload, default_max_files=1, default_max_mb=2)
 
 
 api_bp = Blueprint("tabular_ml_api", __name__, url_prefix="/api/tabular_ml")

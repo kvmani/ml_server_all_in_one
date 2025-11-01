@@ -189,6 +189,7 @@ def create_app(config_name: str | None = None) -> Flask:
             "siteSettings": site_config,
             "manifests": manifests,
             "pluginSettings": app.config.get("PLUGIN_SETTINGS", {}),
+            "page": "home",
         }
         assets_map = app.extensions.get(
             "react_assets", {"scripts": [], "styles": [], "preload": []}
