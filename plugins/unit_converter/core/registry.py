@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Iterable
 
 from pint import UnitRegistry
 
@@ -60,10 +59,4 @@ def interval_unit(symbol: str) -> str:
     return _INTERVAL_UNIT_MAP.get(symbol, symbol)
 
 
-def iter_custom_units() -> Iterable[str]:
-    """Yield the custom unit definitions injected into the registry."""
-
-    return tuple(_CUSTOM_DEFINITIONS)
-
-
-__all__ = ["get_registry", "interval_unit", "iter_custom_units"]
+__all__ = ["get_registry", "interval_unit"]

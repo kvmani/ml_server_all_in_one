@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 
 
+def _load_secret() -> str:
+    """Return the Flask secret key for the current process."""
+
+    secret = os.environ.get("ML_SERVER_SECRET")
+    if secret:
+        return secret
+    # Generate an unpredictable per-process key for local development.
+    return secrets.token_urlsafe(64)
+
+
 class BaseConfig:
-    SECRET_KEY = os.environ.get("ML_SERVER_SECRET", "offline-secret")
+    SECRET_KEY = _load_secret()
     MAX_CONTENT_LENGTH = 25 * 1024 * 1024  # 25 MiB
     SESSION_COOKIE_SECURE = False
     SESSION_COOKIE_HTTPONLY = True

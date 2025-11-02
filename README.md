@@ -57,7 +57,17 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
    pip install -r requirements.txt
    ```
 
-3. **Build the frontend bundle**
+3. **Set a secret key**
+
+   ```bash
+   export ML_SERVER_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(64))')"
+   ```
+
+   The application refuses to fall back to predictable defaults. Provide your own value in production—one secret per deploymen
+t. During local development you may skip this step, but a random key will be generated on every restart which invalidates sessi
+ons.
+
+4. **Build the frontend bundle**
 
    ```bash
    cd frontend
@@ -68,7 +78,7 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
 
    The Vite build places hashed React assets under `app/ui/static/react/`. Re-run the build whenever you change files in `frontend/`. During local development you can skip the build step and rely on the Vite dev server instead (see step 5).
 
-4. **Review configuration** (optional)
+5. **Review configuration** (optional)
 
    - Open [`config.yml`](config.yml) to adjust:
      - `site.name`, `site.description`, and `site.default_theme`
@@ -77,7 +87,7 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
      - Per-plugin limits (e.g., `plugins.pdf_tools.merge_upload.max_mb`)
      - Documentation links (`plugins.<tool>.docs`)
 
-5. **Run the development servers**
+6. **Run the development servers**
 
    Terminal A (Flask API):
 
@@ -95,13 +105,13 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
 
    Visit `http://localhost:5173/?theme=<theme-key>` while the Vite dev server is running. API calls are automatically proxied to the Flask app at `http://localhost:5000`.
 
-6. **Execute backend tests**
+7. **Execute backend tests**
 
    ```bash
    pytest -q
    ```
 
-7. **Run frontend unit tests**
+8. **Run frontend unit tests**
 
    ```bash
    cd frontend
@@ -109,7 +119,7 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
    cd ..
    ```
 
-8. **Run Playwright end-to-end suite**
+9. **Run Playwright end-to-end suite**
 
    ```bash
    cd frontend

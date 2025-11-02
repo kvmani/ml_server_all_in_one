@@ -47,9 +47,8 @@ ml_server_aio/
 │  ├─ unit_converter/
 │  └─ tabular_ml/
 ├─ common/                           # Shared utilities (NO plugin knowledge)
-│  ├─ io_mem.py                      # in-memory file pipes, tmpfs helpers
+│  ├─ io.py                          # in-memory file pipes, tmpfs helpers
 │  ├─ validate.py                    # schema & input validation
-│  ├─ tasks.py                       # short-lived in-RAM task runner
 │  ├─ errors.py                      # AppError + JSON error encoder
 │  ├─ responses.py                   # ok(data), fail(error)
 │  └─ logging.py                     # logger factory w/ request IDs
@@ -141,7 +140,7 @@ Errors: 400 (validation), 413 (too large), 500 (internal sanitized)
 - **Errors**: raise `AppError(code, message, details)` → JSON via `common.errors`.
 - **Logging**: `common.logging.get_logger(__name__)` (request IDs, durations).
 - **Config**: Global config via `config.yml`; read once, inject into plugins.
-- **Files**: `common.io_mem` for tmpfs, safe paths, allowed mime/types, size checks.
+- **Files**: `common.io` for tmpfs, safe paths, allowed mime/types, size checks.
 
 ---
 
@@ -290,7 +289,7 @@ Artifacts:
 # plugins/pdf_tools/api/__init__.py
 from flask import Blueprint, request, send_file
 from io import BytesIO
-from ...common.io_mem import new_tmpfs_dir, secure_filename
+from ...common.io import new_tmpfs_dir, secure_filename
 from ...common.validate import ensure_pdfs
 from ...common.errors import AppError
 from ...common.responses import ok, fail
