@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import unitConverterIcon from "../assets/unit_converter_icon.png";
 import { SettingsModal, type SettingsField } from "../components/SettingsModal";
 import { StatusMessage } from "../components/StatusMessage";
@@ -14,6 +14,33 @@ type UnitItem = {
   aliases?: string[];
   dimension?: string;
 };
+
+type FamiliesResponse = {
+  families: string[];
+  units: Record<string, UnitItem[]>;
+};
+
+let familiesCache: FamiliesResponse | null = null;
+let familiesPromise: Promise<FamiliesResponse> | null = null;
+
+async function fetchFamiliesOnce(): Promise<FamiliesResponse> {
+  if (familiesCache) {
+    return familiesCache;
+  }
+  if (!familiesPromise) {
+    familiesPromise = apiFetch<FamiliesResponse>("/api/unit_converter/families").then(
+      (data) => {
+        familiesCache = data;
+        familiesPromise = null;
+        return data;
+      },
+    ).catch((error) => {
+      familiesPromise = null;
+      throw error;
+    });
+  }
+  return familiesPromise;
+}
 
 type UnitConverterPreferences = {
   defaultFamily: string;
@@ -58,6 +85,14 @@ export default function UnitConverterPage() {
   const converterStatus = useStatus({ message: "Enter a value to convert", level: "info" }, {
     context: "Unit Converter · Direct",
   });
+  const setConverterStatusRef = useRef(converterStatus.setStatus);
+  useEffect(() => {
+    setConverterStatusRef.current = converterStatus.setStatus;
+  }, [converterStatus.setStatus]);
+  const withLoaderRef = useRef(withLoader);
+  useEffect(() => {
+    withLoaderRef.current = withLoader;
+  }, [withLoader]);
 
   const [expression, setExpression] = useState("");
   const [expressionTarget, setExpressionTarget] = useState("");
@@ -75,11 +110,7 @@ export default function UnitConverterPage() {
     let cancelled = false;
     const loadFamilies = async () => {
       try {
-        const data = await withLoader(() =>
-          apiFetch<{ families: string[]; units: Record<string, UnitItem[]> }>(
-            "/api/unit_converter/families",
-          ),
-        );
+        const data = await withLoaderRef.current(fetchFamiliesOnce);
         if (cancelled) {
           return;
         }
@@ -95,18 +126,18 @@ export default function UnitConverterPage() {
         setToUnit(items[1]?.symbol ?? items[0]?.symbol ?? "");
       } catch (error) {
         if (!cancelled) {
-          converterStatus.setStatus(
+          setConverterStatusRef.current(
             error instanceof Error ? error.message : "Unable to load unit families",
             "error",
           );
         }
       }
     };
-    loadFamilies();
+    void loadFamilies();
     return () => {
       cancelled = true;
     };
-  }, [converterStatus, preferences.defaultFamily, withLoader]);
+  }, []);
 
   useEffect(() => {
     if (!families.length) {
