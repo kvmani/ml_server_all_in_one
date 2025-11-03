@@ -122,3 +122,33 @@ def test_tabular_training_supports_algorithm_selection(
     page.locator("#train-results").wait_for(state="visible")
     badge_text = page.locator("#algorithm-used").inner_text()
     assert "Random forest" in badge_text
+
+
+def test_unit_converter_allows_value_conversion(page: Page, live_server: str) -> None:
+    page.goto(f"{live_server}/unit_converter/", wait_until="domcontentloaded")
+    page.wait_for_selector("#family option[value='temperature']", state="attached")
+    page.select_option("#family", "temperature")
+    page.wait_for_selector("#from-unit option[value='degC']", state="attached")
+    page.select_option("#from-unit", "degC")
+    page.select_option("#to-unit", "K")
+    page.fill("#value", "25")
+    page.click("#converter-form button[type='submit']")
+    page.locator("#converter-output").wait_for(state="visible")
+    result_text = page.locator("#result").inner_text().strip()
+    assert "25 degC" in result_text
+    assert "298.15" in result_text
+    assert result_text.endswith("K")
+    base_text = page.locator("#base").inner_text().strip().lower()
+    assert base_text.startswith("base quantity")
+    assert "kelvin" in base_text
+
+
+def test_unit_converter_evaluates_expression(page: Page, live_server: str) -> None:
+    page.goto(f"{live_server}/unit_converter/", wait_until="domcontentloaded")
+    page.wait_for_selector("#expression")
+    page.fill("#expression", "5 kJ/mol to eV")
+    page.click("#expression-form button[type='submit']")
+    page.locator("#expression-output").wait_for(state="visible")
+    expression_text = page.locator("#expression-result").inner_text().strip()
+    assert expression_text.startswith("5 kJ/mol to eV →")
+    assert "eV" in expression_text
