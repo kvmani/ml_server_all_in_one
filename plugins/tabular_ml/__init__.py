@@ -1,10 +1,10 @@
 """Tabular ML plugin."""
 
 manifest = {
-    "title": "Tabular ML",
+    "title": "Tabular ML (enhanced)",
     "summary": (
-        "Profile datasets, explore scatter plots, and train lightweight models "
-        "entirely offline."
+        "Explore datasets, preprocess columns, detect outliers, visualise "
+        "distributions, and train/evaluate classic ML models entirely offline."
     ),
     "blueprint": "tabular_ml",
     "category": "Machine Learning",

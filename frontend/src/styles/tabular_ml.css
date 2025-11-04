@@ -289,3 +289,236 @@
     align-items: flex-start;
   }
 }
+
+.tabular-layout {
+  gap: 2rem;
+}
+
+.tabular-section {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  padding: clamp(1.25rem, 1.5vw, 1.75rem);
+  background: rgba(15, 25, 46, 0.55);
+  display: grid;
+  gap: 1rem;
+}
+
+.tabular-section__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.tabular-section__description {
+  margin: 0.25rem 0 0;
+  color: var(--color-muted);
+}
+
+.tabular-section__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.tabular-datasets {
+  display: grid;
+  gap: 1rem;
+}
+
+.tabular-datasets__list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tabular-datasets__item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  background: rgba(18, 31, 54, 0.45);
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.tabular-datasets__item.is-selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px rgba(99, 213, 255, 0.45);
+}
+
+.tabular-datasets__name {
+  display: block;
+  font-weight: 600;
+}
+
+.tabular-datasets__meta {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.tabular-datasets__license {
+  margin-top: 0.35rem;
+  display: inline-block;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.tabular-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.tabular-upload input[type="file"] {
+  display: none;
+}
+
+.tabular-upload__label {
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+}
+
+.tabular-empty {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.tabular-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tabular-form__grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.tabular-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.tabular-field__label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.tabular-field__hint {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.tabular-checkbox,
+.tabular-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tabular-fieldset {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  display: inline-flex;
+  gap: 1.5rem;
+}
+
+.tabular-fieldset__legend {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.tabular-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.tabular-summary {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin: 0;
+}
+
+.tabular-summary dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.tabular-summary dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.tabular-visuals__grid {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.tabular-corr__controls {
+  display: grid;
+  gap: 1rem;
+}
+
+.tabular-corr__columns {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.tabular-corr__matrix {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.tabular-corr__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.tabular-corr__row--header {
+  font-weight: 600;
+}
+
+.tabular-corr__label {
+  font-weight: 600;
+}
+
+.tabular-config {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.tabular-config dl {
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.tabular-config dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.tabular-config dd {
+  margin: 0;
+}
