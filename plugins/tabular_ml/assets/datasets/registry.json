@@ -1,0 +1,14 @@
+[
+  {
+    "key": "titanic",
+    "name": "Titanic (full)",
+    "file": "titanic_full.csv",
+    "license": "CC BY 4.0"
+  },
+  {
+    "key": "adult",
+    "name": "Adult Income (full)",
+    "file": "adult_income_full.csv",
+    "license": "UCI ML Repository"
+  }
+]
