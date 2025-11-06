@@ -6,7 +6,7 @@ import uuid
 from typing import Any, Callable
 
 import numpy as np
-import pandas as pd
+from sklearn.base import clone
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import (
@@ -20,6 +20,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import cross_val_score
 from sklearn.neural_network import MLPClassifier, MLPRegressor
+from sklearn.pipeline import Pipeline
 
 from .outliers import apply_outliers, compute_outliers
 from .preprocess import PreprocessArtifacts, fit_preprocess
@@ -148,37 +149,51 @@ def run_train(request: TrainRequest) -> dict[str, Any]:
     factory = _estimator_factory(artifacts, request.algo)
     estimator = factory()
 
-    scores = cross_val_score(estimator, artifacts.X_train, artifacts.y_train, cv=request.cv)
-    estimator.fit(artifacts.X_train, artifacts.y_train)
+    preprocess_for_training = clone(artifacts.transformer)
+    model_pipeline = Pipeline([("preprocess", preprocess_for_training), ("model", estimator)])
+
+    X_train = artifacts.X_train
+    y_train = artifacts.y_train.to_numpy()
+    X_test = artifacts.X_test
+    y_test = artifacts.y_test.to_numpy()
+
+    scores = cross_val_score(model_pipeline, X_train, y_train, cv=request.cv)
+    model_pipeline.fit(X_train, y_train)
+
+    preprocess_step = model_pipeline.named_steps["preprocess"]
+    feature_names = artifacts.feature_names
+    if hasattr(preprocess_step, "get_feature_names_out"):
+        feature_names = preprocess_step.get_feature_names_out().tolist()
 
     if artifacts.task == "classification":
-        predictions = estimator.predict(artifacts.X_test)
+        predictions = model_pipeline.predict(X_test)
         metrics = {
-            "accuracy": float(accuracy_score(artifacts.y_test, predictions)),
-            "f1": float(f1_score(artifacts.y_test, predictions, average="weighted")),
+            "accuracy": float(accuracy_score(y_test, predictions)),
+            "f1": float(f1_score(y_test, predictions, average="weighted")),
             "cv_accuracy": float(scores.mean()),
         }
         roc_data = None
         pr_data = None
-        if hasattr(estimator, "predict_proba"):
-            probs = estimator.predict_proba(artifacts.X_test)
+        if hasattr(model_pipeline, "predict_proba"):
+            probs = model_pipeline.predict_proba(X_test)
             if probs.shape[1] >= 2:
-                fpr, tpr, _ = roc_curve(artifacts.y_test, probs[:, 1], pos_label=estimator.classes_[1])
-                prec, rec, _ = precision_recall_curve(artifacts.y_test, probs[:, 1], pos_label=estimator.classes_[1])
+                positive_class = model_pipeline.named_steps["model"].classes_[1]
+                fpr, tpr, _ = roc_curve(y_test, probs[:, 1], pos_label=positive_class)
+                prec, rec, _ = precision_recall_curve(y_test, probs[:, 1], pos_label=positive_class)
                 roc_data = {"fpr": fpr.tolist(), "tpr": tpr.tolist()}
                 pr_data = {"precision": prec.tolist(), "recall": rec.tolist()}
         curves = {"roc": roc_data, "pr": pr_data}
     else:
-        predictions = estimator.predict(artifacts.X_test)
+        predictions = model_pipeline.predict(X_test)
         metrics = {
-            "rmse": float(np.sqrt(mean_squared_error(artifacts.y_test, predictions))),
-            "mae": float(mean_absolute_error(artifacts.y_test, predictions)),
-            "r2": float(r2_score(artifacts.y_test, predictions)),
+            "rmse": float(np.sqrt(mean_squared_error(y_test, predictions))),
+            "mae": float(mean_absolute_error(y_test, predictions)),
+            "r2": float(r2_score(y_test, predictions)),
             "cv_r2": float(scores.mean()),
         }
         curves = {}
 
-    feature_importances = _feature_importances(estimator, artifacts.feature_names)
+    feature_importances = _feature_importances(model_pipeline.named_steps["model"], feature_names)
     run_id = uuid.uuid4().hex
     payload = {
         "run_id": run_id,
@@ -189,8 +204,9 @@ def run_train(request: TrainRequest) -> dict[str, Any]:
             "metrics": metrics,
             "feature_importances": feature_importances,
         },
-        "feature_names": artifacts.feature_names,
+        "feature_names": feature_names,
         "curves": curves,
+        "pipeline": model_pipeline,
     }
     store_run(session, run_id, payload)
     return {
