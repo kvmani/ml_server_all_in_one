@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import unitConverterIcon from "../assets/unit_converter_icon.png";
 import { SettingsModal, type SettingsField } from "../components/SettingsModal";
 import { StatusMessage } from "../components/StatusMessage";
@@ -44,8 +44,9 @@ async function fetchFamiliesOnce(): Promise<FamiliesResponse> {
 
 type UnitConverterPreferences = {
   defaultFamily: string;
-  defaultMode: "absolute" | "relative";
-  defaultNotation: "auto" | "fixed" | "scientific" | "engineering";
+  defaultMode: "absolute" | "interval";
+  defaultNotation: "auto" | "scientific" | "engineering";
+  defaultDecimals: number;
 };
 
 function formatAliases(aliases?: string[]) {
@@ -65,6 +66,7 @@ export default function UnitConverterPage() {
       defaultFamily: "",
       defaultMode: "absolute",
       defaultNotation: "auto",
+      defaultDecimals: 2,
     },
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -75,12 +77,15 @@ export default function UnitConverterPage() {
   const [fromUnit, setFromUnit] = useState<string>("");
   const [toUnit, setToUnit] = useState<string>("");
   const [value, setValue] = useState<string>("");
-  const [mode, setMode] = useState<"absolute" | "relative">(preferences.defaultMode);
+  const [mode, setMode] = useState<"absolute" | "interval">(preferences.defaultMode);
   const [sigFigs, setSigFigs] = useState<string>("");
-  const [decimals, setDecimals] = useState<string>("");
-  const [notation, setNotation] = useState<string>(preferences.defaultNotation);
+  const [decimals, setDecimals] = useState<string>(String(preferences.defaultDecimals ?? 2));
+  const [notation, setNotation] = useState<"auto" | "scientific" | "engineering">(
+    preferences.defaultNotation,
+  );
   const [result, setResult] = useState<string>("");
   const [base, setBase] = useState<string>("");
+  const [history, setHistory] = useState<string[]>([]);
 
   const converterStatus = useStatus({ message: "Enter a value to convert", level: "info" }, {
     context: "Unit Converter · Direct",
@@ -96,8 +101,13 @@ export default function UnitConverterPage() {
 
   const [expression, setExpression] = useState("");
   const [expressionTarget, setExpressionTarget] = useState("");
-  const [expressionNotation, setExpressionNotation] = useState(preferences.defaultNotation);
+  const [expressionNotation, setExpressionNotation] = useState<
+    "auto" | "scientific" | "engineering"
+  >(preferences.defaultNotation);
   const [expressionSigFigs, setExpressionSigFigs] = useState("");
+  const [expressionDecimals, setExpressionDecimals] = useState<string>(
+    String(preferences.defaultDecimals ?? 2),
+  );
   const [expressionResult, setExpressionResult] = useState<string>("");
   const expressionStatus = useStatus(
     { message: "Evaluate combined expressions without extra requests", level: "info" },
@@ -105,6 +115,10 @@ export default function UnitConverterPage() {
   );
 
   const availableUnits = units[family] || [];
+  const fromUnitListId = useId();
+  const toUnitListId = useId();
+  const resolvedFromUnit = availableUnits.find((unit) => unit.symbol === fromUnit);
+  const resolvedToUnit = availableUnits.find((unit) => unit.symbol === toUnit);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,6 +172,12 @@ export default function UnitConverterPage() {
   }, [preferences.defaultNotation]);
 
   useEffect(() => {
+    const defaultDecimals = String(preferences.defaultDecimals ?? 2);
+    setDecimals(defaultDecimals);
+    setExpressionDecimals(defaultDecimals);
+  }, [preferences.defaultDecimals]);
+
+  useEffect(() => {
     const items = units[family] || [];
     if (!items.length) {
       setFromUnit("");
@@ -191,7 +211,7 @@ export default function UnitConverterPage() {
         type: "select",
         options: [
           { value: "absolute", label: "Absolute (e.g., K → °C)" },
-          { value: "relative", label: "Interval (ΔK → Δ°C)" },
+          { value: "interval", label: "Interval (ΔK → Δ°C)" },
         ],
         description: "Applied to both converters when resetting.",
       },
@@ -201,11 +221,19 @@ export default function UnitConverterPage() {
         type: "select",
         options: [
           { value: "auto", label: "Automatic" },
-          { value: "fixed", label: "Fixed" },
           { value: "scientific", label: "Scientific" },
           { value: "engineering", label: "Engineering" },
         ],
         description: "Formatting used unless overridden in the form.",
+      },
+      {
+        key: "defaultDecimals",
+        label: "Default decimal places",
+        type: "number",
+        min: 0,
+        max: 12,
+        step: 1,
+        description: "Applied to both converters when no override is provided.",
       },
     ],
     [families],
@@ -217,26 +245,35 @@ export default function UnitConverterPage() {
 
   const submitConvert = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!value.trim()) {
+    const sanitizedValue = value.trim();
+    if (!sanitizedValue) {
       converterStatus.setStatus("Enter a value to convert", "error");
       return;
     }
     converterStatus.setStatus("Converting…", "progress");
     try {
       const payload: Record<string, unknown> = {
-        value: value.trim(),
+        value: sanitizedValue,
         from_unit: fromUnit,
         to_unit: toUnit,
         mode,
         notation,
       };
-      if (sigFigs) {
-        payload.sig_figs = Number.parseInt(sigFigs, 10);
+      if (sigFigs.trim()) {
+        const parsedSigFigs = Number.parseInt(sigFigs.trim(), 10);
+        if (Number.isNaN(parsedSigFigs)) {
+          throw new Error("Significant figures must be a whole number.");
+        }
+        payload.sig_figs = parsedSigFigs;
       }
-      if (decimals) {
-        payload.decimals = Number.parseInt(decimals, 10);
+      if (decimals.trim() !== "") {
+        const parsedDecimals = Number.parseInt(decimals.trim(), 10);
+        if (Number.isNaN(parsedDecimals)) {
+          throw new Error("Decimal places must be a whole number.");
+        }
+        payload.decimals = parsedDecimals;
       }
-      const data = await withLoader(() =>
+      const data = await withLoaderRef.current(() =>
         apiFetch<{
           value: number;
           unit: string;
@@ -248,7 +285,9 @@ export default function UnitConverterPage() {
           body: JSON.stringify(payload),
         }),
       );
-      setResult(`${value.trim()} ${fromUnit} = ${data.formatted} ${data.unit}`);
+      const formattedResult = `${sanitizedValue} ${fromUnit} = ${data.formatted} ${data.unit}`;
+      setResult(formattedResult);
+      setHistory((previous) => [formattedResult, ...previous].slice(0, 5));
       const baseValue = Number(data.base?.value);
       const baseUnit = data.base?.unit ?? "";
       const baseDisplay = Number.isFinite(baseValue)
@@ -265,7 +304,7 @@ export default function UnitConverterPage() {
   const resetConverter = () => {
     setValue("");
     setSigFigs("");
-    setDecimals("");
+    setDecimals(String(preferences.defaultDecimals ?? 2));
     setNotation(preferences.defaultNotation);
     setMode(preferences.defaultMode);
     setResult("");
@@ -275,30 +314,42 @@ export default function UnitConverterPage() {
 
   const submitExpression = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!expression.trim()) {
+    const sanitizedExpression = expression.trim();
+    if (!sanitizedExpression) {
       expressionStatus.setStatus("Enter an expression to evaluate", "error");
       return;
     }
     expressionStatus.setStatus("Evaluating…", "progress");
     try {
       const payload: Record<string, unknown> = {
-        expression: expression.trim(),
+        expression: sanitizedExpression,
         notation: expressionNotation,
       };
       if (expressionTarget.trim()) {
         payload.target = expressionTarget.trim();
       }
       if (expressionSigFigs.trim()) {
-        payload.sig_figs = Number.parseInt(expressionSigFigs.trim(), 10);
+        const parsedSigFigs = Number.parseInt(expressionSigFigs.trim(), 10);
+        if (Number.isNaN(parsedSigFigs)) {
+          throw new Error("Significant figures must be a whole number.");
+        }
+        payload.sig_figs = parsedSigFigs;
       }
-      const data = await withLoader(() =>
+      if (expressionDecimals.trim() !== "") {
+        const parsedDecimals = Number.parseInt(expressionDecimals.trim(), 10);
+        if (Number.isNaN(parsedDecimals)) {
+          throw new Error("Decimal places must be a whole number.");
+        }
+        payload.decimals = parsedDecimals;
+      }
+      const data = await withLoaderRef.current(() =>
         apiFetch<{ formatted: string; unit: string }>("/api/unit_converter/expressions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         }),
       );
-      setExpressionResult(`${expression.trim()} → ${data.formatted} ${data.unit}`);
+      setExpressionResult(`${sanitizedExpression} → ${data.formatted} ${data.unit}`);
       expressionStatus.setStatus("Expression evaluated", "success");
     } catch (error) {
       expressionStatus.setStatus(error instanceof Error ? error.message : "Expression evaluation failed", "error");
@@ -310,12 +361,21 @@ export default function UnitConverterPage() {
     setExpressionTarget("");
     setExpressionNotation(preferences.defaultNotation);
     setExpressionSigFigs("");
+    setExpressionDecimals(String(preferences.defaultDecimals ?? 2));
     setExpressionResult("");
     expressionStatus.setStatus("Ready", "info");
   };
 
-  const currentFromAliases = formatAliases(availableUnits.find((unit) => unit.symbol === fromUnit)?.aliases);
-  const currentToAliases = formatAliases(availableUnits.find((unit) => unit.symbol === toUnit)?.aliases);
+  const currentFromAliases = resolvedFromUnit
+    ? formatAliases(resolvedFromUnit.aliases)
+    : fromUnit
+    ? "Custom unit (any Pint symbol)"
+    : "";
+  const currentToAliases = resolvedToUnit
+    ? formatAliases(resolvedToUnit.aliases)
+    : toUnit
+    ? "Custom unit (any Pint symbol)"
+    : "";
 
   return (
     <section className="shell surface-block" aria-labelledby="unit-converter-title">
@@ -329,8 +389,9 @@ export default function UnitConverterPage() {
             summary="Convert between laboratory units, inspect base quantities, and validate interval calculations without leaving the offline workspace. Choose a unit family, configure precision and notation, and view the converted value alongside the base SI representation."
             bullets={[
               "Unit registry powered by Pint with engineering materials presets",
+              "Precision controls for decimal places or significant figures",
               "Toggle between absolute and interval temperature conversions",
-              <>Evaluate composite expressions such as <code>5 kJ/mol to eV</code></>,
+              <>Evaluate composite expressions and type any Pint unit symbol, e.g. <code>5 kJ/mol to eV</code></>,
             ]}
             actions={
               <>
@@ -403,38 +464,44 @@ export default function UnitConverterPage() {
               </div>
               <div className="form-field">
                 <label className="form-field__label" htmlFor="from-unit">From unit</label>
-                <select
+                <input
                   id="from-unit"
                   name="from_unit"
+                  list={fromUnitListId}
                   required
                   value={fromUnit}
                   onChange={(event) => setFromUnit(event.target.value)}
-                >
+                  autoComplete="off"
+                />
+                <datalist id={fromUnitListId}>
                   {availableUnits.map((unit) => (
-                    <option key={unit.symbol} value={unit.symbol} data-aliases={(unit.aliases || []).join(", ")}>
+                    <option key={unit.symbol} value={unit.symbol}>
                       {unit.symbol}
                     </option>
                   ))}
-                </select>
+                </datalist>
                 <p className="form-field__hint" id="from-hint">
                   {currentFromAliases}
                 </p>
               </div>
               <div className="form-field">
                 <label className="form-field__label" htmlFor="to-unit">To unit</label>
-                <select
+                <input
                   id="to-unit"
                   name="to_unit"
+                  list={toUnitListId}
                   required
                   value={toUnit}
                   onChange={(event) => setToUnit(event.target.value)}
-                >
+                  autoComplete="off"
+                />
+                <datalist id={toUnitListId}>
                   {availableUnits.map((unit) => (
                     <option key={unit.symbol} value={unit.symbol}>
                       {unit.symbol}
                     </option>
                   ))}
-                </select>
+                </datalist>
                 <p className="form-field__hint" id="to-hint">
                   {currentToAliases}
                 </p>
@@ -450,10 +517,10 @@ export default function UnitConverterPage() {
                   id="mode"
                   name="mode"
                   value={mode}
-                  onChange={(event) => setMode(event.target.value as "absolute" | "relative")}
+                  onChange={(event) => setMode(event.target.value as "absolute" | "interval")}
                 >
                   <option value="absolute">Absolute (default)</option>
-                  <option value="relative">Interval / delta</option>
+                  <option value="interval">Interval / delta</option>
                 </select>
                 <p className="form-field__hint">Interval mode keeps offsets for temperature differences.</p>
               </div>
@@ -493,7 +560,9 @@ export default function UnitConverterPage() {
                   id="notation"
                   name="notation"
                   value={notation}
-                  onChange={(event) => setNotation(event.target.value)}
+                  onChange={(event) =>
+                    setNotation(event.target.value as "auto" | "scientific" | "engineering")
+                  }
                 >
                   <option value="auto">Automatic</option>
                   <option value="scientific">Scientific</option>
@@ -530,6 +599,19 @@ export default function UnitConverterPage() {
               {base}
             </p>
           </section>
+
+          {history.length ? (
+            <section className="surface-muted" aria-labelledby="conversion-history-title">
+              <h2 id="conversion-history-title" className="form-section__title">
+                Recent conversions
+              </h2>
+              <ol className="history-list">
+                {history.map((entry, index) => (
+                  <li key={`${index}-${entry}`}>{entry}</li>
+                ))}
+              </ol>
+            </section>
+          ) : null}
 
           <section className="surface-muted" aria-labelledby="expression-title">
             <h2 id="expression-title" className="form-section__title">
@@ -579,7 +661,11 @@ export default function UnitConverterPage() {
                     id="expression-notation"
                     name="notation"
                     value={expressionNotation}
-                    onChange={(event) => setExpressionNotation(event.target.value)}
+                    onChange={(event) =>
+                      setExpressionNotation(
+                        event.target.value as "auto" | "scientific" | "engineering",
+                      )
+                    }
                   >
                     <option value="auto">Automatic</option>
                     <option value="scientific">Scientific</option>
@@ -600,6 +686,22 @@ export default function UnitConverterPage() {
                     value={expressionSigFigs}
                     onChange={(event) => setExpressionSigFigs(event.target.value)}
                   />
+                </div>
+                <div className="form-field">
+                  <label className="form-field__label" htmlFor="expression-decimals">
+                    Fixed decimals
+                  </label>
+                  <input
+                    id="expression-decimals"
+                    name="decimals"
+                    type="number"
+                    min="0"
+                    max="12"
+                    step="1"
+                    value={expressionDecimals}
+                    onChange={(event) => setExpressionDecimals(event.target.value)}
+                  />
+                  <p className="form-field__hint">Overrides significant figures when set.</p>
                 </div>
               </div>
               <div className="form-actions">
