@@ -731,6 +731,15 @@ textarea:focus-visible {
   font-weight: 600;
 }
 
+.history-list {
+  margin: 0.75rem 0 0;
+  padding-left: 1.5rem;
+}
+
+.history-list li + li {
+  margin-top: 0.35rem;
+}
+
 .input-grid {
   display: grid;
   gap: 1rem;

@@ -19,6 +19,22 @@ def test_temperature_interval_mode():
     assert abs(result["value"] - 18.0) < 1e-9
 
 
+def test_decimal_precision_formatting():
+    result = convert(1, "meter", "inch", decimals=2)
+    assert result["formatted"] == "39.37"
+
+
+def test_zero_decimal_formatting():
+    result = convert(1, "meter", "inch", decimals=0)
+    assert result["formatted"] == "39"
+
+
+def test_expression_with_decimals():
+    result = convert_expression("5 kg + 200 g", target="lb", decimals=3)
+    assert result["unit"] == "lb"
+    assert result["formatted"] == "11.464"
+
+
 def test_expression_conversion():
     result = convert_expression("5 kJ/mol", target="eV")
     assert result["unit"] == "eV"

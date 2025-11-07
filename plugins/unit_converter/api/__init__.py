@@ -31,7 +31,7 @@ class ConvertPayload(PrecisionPayload):
     value: float | int | str
     from_unit: str
     to_unit: str
-    mode: Literal["absolute", "relative"] = "absolute"
+    mode: Literal["absolute", "interval", "relative"] = "absolute"
 
 
 class ExpressionPayload(PrecisionPayload):
@@ -80,11 +80,12 @@ def convert_endpoint() -> Response:
             )
         )
     try:
+        effective_mode = "interval" if payload.mode == "relative" else payload.mode
         result = convert(
             payload.value,
             payload.from_unit,
             payload.to_unit,
-            mode=payload.mode,
+            mode=effective_mode,
             **_parse_precision(payload),
         )
     except (BadInputError, InvalidUnitError) as exc:
