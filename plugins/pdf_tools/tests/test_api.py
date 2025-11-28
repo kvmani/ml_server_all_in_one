@@ -114,3 +114,33 @@ def test_metadata_rejects_fake_pdf_signature():
     payload = response.get_json()
     assert payload["success"] is False
     assert "signature" in payload["error"]["message"].lower()
+
+
+def test_merge_allows_attachment_download():
+    client = _make_client()
+    manifest = [
+        {"field": "file-0", "filename": "a.pdf", "pages": "all"},
+    ]
+    data = {
+        "manifest": json.dumps(manifest),
+        "file-0": (BytesIO(_dummy_pdf()), "a.pdf"),
+    }
+    response = client.post(
+        "/api/pdf_tools/merge?download=1", data=data, content_type="multipart/form-data"
+    )
+    assert response.status_code == 200
+    assert response.headers.get("Content-Disposition", "").startswith("attachment;")
+    assert response.data.startswith(b"%PDF")
+
+
+def test_split_allows_zip_download():
+    client = _make_client()
+    data = {
+        "file": (BytesIO(_dummy_pdf(2)), "sample.pdf"),
+    }
+    response = client.post(
+        "/api/pdf_tools/split?download=1", data=data, content_type="multipart/form-data"
+    )
+    assert response.status_code == 200
+    assert response.headers.get("Content-Disposition", "").endswith(".zip")
+    assert response.headers.get("Content-Type") == "application/zip"

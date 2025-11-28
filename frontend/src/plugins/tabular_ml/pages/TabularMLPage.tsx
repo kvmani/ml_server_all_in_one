@@ -247,7 +247,7 @@ export function TabularMLPage() {
       bullets={[
         "Auto-loads the Titanic dataset for instant exploration.",
         "Preprocessing supports per-column imputers, scaling, and encoding.",
-        "Deterministic Random Forest, Logistic Regression, and MLP training with cross-validation.",
+        "Train CPU-only models including Random Forest, Gradient Boosting, SVM, Extra Trees, and optional Torch MLP when installed.",
       ]}
     >
       <ConfigDrawer config={state.config} />
@@ -296,6 +296,7 @@ export function TabularMLPage() {
         preprocess={state.preprocess}
         result={state.train}
         loading={trainLoading}
+        algorithms={state.config?.algorithms}
         onTrain={handleTrain}
       />
       <EvalPanel

@@ -28,8 +28,18 @@ _RESAMPLE_MAP = {
     "bicubic": Image.Resampling.BICUBIC,
 }
 
+MAX_INPUT_PIXELS = 20_000_000
+MAX_OUTPUT_PIXELS = 25_000_000
 
-def enhance_image(data: bytes, *, scale: float = 2.0, mode: str = "bicubic") -> SuperResolutionResult:
+
+def enhance_image(
+    data: bytes,
+    *,
+    scale: float = 2.0,
+    mode: str = "bicubic",
+    max_input_pixels: int = MAX_INPUT_PIXELS,
+    max_output_pixels: int = MAX_OUTPUT_PIXELS,
+) -> SuperResolutionResult:
     """Upscale an image purely in-memory.
 
     Args:
@@ -52,6 +62,9 @@ def enhance_image(data: bytes, *, scale: float = 2.0, mode: str = "bicubic") -> 
     except UnidentifiedImageError as exc:  # pragma: no cover - defensive
         raise SuperResolutionError("Unsupported or corrupted image stream") from exc
 
+    if image.width * image.height > max_input_pixels:
+        raise SuperResolutionError("Image exceeds maximum allowed pixels")
+
     resample = _RESAMPLE_MAP.get(mode.lower())
     if resample is None:
         raise SuperResolutionError("Unsupported resampling mode")
@@ -61,6 +74,8 @@ def enhance_image(data: bytes, *, scale: float = 2.0, mode: str = "bicubic") -> 
 
     width = max(1, int(round(image.width * scale)))
     height = max(1, int(round(image.height * scale)))
+    if width * height > max_output_pixels:
+        raise SuperResolutionError("Upscaled image exceeds maximum allowed pixels")
     upscaled = image.resize((width, height), resample)
 
     buffer = BytesIO()

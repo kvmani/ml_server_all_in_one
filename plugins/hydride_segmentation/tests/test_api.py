@@ -79,3 +79,20 @@ def test_segment_rejects_invalid_parameter():
     )
     assert response.status_code == 400
     assert response.get_json()["success"] is False
+
+
+def test_segment_rejects_oversized_image_pixels(monkeypatch):
+    from plugins.hydride_segmentation import api as hydride_api
+
+    monkeypatch.setattr(hydride_api, "_max_pixels", lambda: 10)
+    client = _make_client()
+    data = {"image": (io.BytesIO(_dummy_png()), "large.png")}
+    response = client.post(
+        "/api/hydride_segmentation/segment",
+        data=data,
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["success"] is False
+    assert "maximum" in payload["error"]["message"].lower()

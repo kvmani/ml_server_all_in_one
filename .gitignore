@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.DS_Store
+.venv/*
 frontend/node_modules/
 app/ui/static/react/
 frontend/playwright-report/

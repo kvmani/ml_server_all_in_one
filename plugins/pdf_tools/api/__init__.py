@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import base64
 import json
+import zipfile
+from io import BytesIO
 from typing import Iterable
 
-from flask import Blueprint, Response, current_app, request
+from flask import Blueprint, Response, current_app, request, send_file
 
 from common.errors import AppError, ValidationAppError
 from common.io import secure_filename
@@ -98,6 +100,10 @@ def _collect_uploads(manifest: Iterable[MergeItem]) -> list:
     return uploads
 
 
+def _download_requested() -> bool:
+    return request.args.get("download") == "1"
+
+
 @api_bp.post("/merge")
 def merge() -> Response:
     manifest = _load_manifest()
@@ -140,6 +146,16 @@ def merge() -> Response:
         "pdf_base64": base64.b64encode(merged).decode("ascii"),
         "total_files": len(specs),
     }
+    if _download_requested():
+        buffer = BytesIO(merged)
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=safe_name,
+            max_age=0,
+        )
     return ok(payload)
 
 
@@ -163,6 +179,19 @@ def split() -> Response:
         )
 
     parts = split_pdf(file.read())
+    if _download_requested():
+        zip_buf = BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for idx, part in enumerate(parts, start=1):
+                zf.writestr(f"page-{idx}.pdf", part)
+        zip_buf.seek(0)
+        return send_file(
+            zip_buf,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name="split_pages.zip",
+            max_age=0,
+        )
     payload = {
         "pages": [base64.b64encode(part).decode("ascii") for part in parts],
         "page_count": len(parts),

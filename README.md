@@ -8,7 +8,8 @@ An offline-first Flask platform bundling microstructure analysis, PDF workflows,
 | --- | --- |
 | **Hydride Segmentation** | Drag-and-drop zirconium alloy micrographs, configure CLAHE/adaptive threshold/morphology parameters, inspect overlays and metrics, and export PNG artefacts. |
 | **PDF Tools** | Queue up to 10 PDFs, reorder with drag handles, apply per-file page ranges, merge instantly, or split a single PDF into per-page downloads. |
-| **Tabular ML** | Upload CSV datasets (≤2 MB), preview rows, build scatter plots, auto-detect regression vs. classification, and inspect top feature importances. |
+| **PDF Stitch** | Upload a few PDFs, assign aliases, and describe an exact multi-line page plan (including “end”) to assemble a custom sequence in one pass. |
+| **Tabular ML** | Upload CSV datasets (≤2 MB), preview rows, build scatter plots, auto-detect regression vs. classification, and train CPU-only models (Random Forest, Gradient Boosting, SVM, Extra Trees, optional Torch MLP if installed) with importances. |
 | **Unit Converter** | Convert between engineering units with Pint-backed accuracy, interval-aware temperature deltas, expression evaluation, and configurable precision. |
 | **Global Activity Log** | Persistent, non-invasive footer console that surfaces upload status, validation warnings, and task progress across every tool in real time. |
 
@@ -48,6 +49,7 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
 
    ```bash
    python -m venv .venv
+   export PYTHONPATH="$PWD:$PYTHONPATH" ### adding cwd to python path.
    source .venv/bin/activate  # Windows: .venv\Scripts\activate
    ```
 

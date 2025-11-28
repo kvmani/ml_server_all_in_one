@@ -21,7 +21,7 @@ from ..core import (
     decode_image,
     segment_conventional,
 )
-from ..core.image_io import image_to_png_base64
+from ..core.image_io import MAX_IMAGE_PIXELS, image_to_png_base64
 
 ALLOWED_MIMES = {"image/png", "image/jpeg", "image/tiff"}
 
@@ -32,6 +32,16 @@ def _plugin_limits() -> FileLimit:
     )
     upload = settings.get("upload")
     return FileLimit.from_settings(upload, default_max_files=1, default_max_mb=5)
+
+
+def _max_pixels() -> int:
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get(
+        "hydride_segmentation", {}
+    )
+    try:
+        return int(settings.get("max_pixels", MAX_IMAGE_PIXELS))
+    except (TypeError, ValueError):
+        return MAX_IMAGE_PIXELS
 
 
 def _parse_conventional_params(form) -> ConventionalParams:
@@ -177,7 +187,15 @@ def segment() -> Response:
 
     file = files[0]
     image_bytes = file.read()
-    image = decode_image(image_bytes)
+    try:
+        image = decode_image(image_bytes, max_pixels=_max_pixels())
+    except ValueError as exc:
+        return fail(
+            ValidationAppError(
+                message=str(exc),
+                code="hydride.invalid_image",
+            )
+        )
     model = (request.form.get("model") or "conventional").lower()
     if model not in {"conventional", "ml"}:
         return fail(

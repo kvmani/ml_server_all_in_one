@@ -20,6 +20,7 @@ from .schemas import (
     TrainRequest,
 )
 from .services import (
+    available_algorithms,
     box,
     corr,
     dataset_list,
@@ -41,6 +42,10 @@ def _upload_limits() -> FileLimit:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("tabular_ml", {})
     upload = settings.get("upload")
     return FileLimit.from_settings(upload, default_max_files=1, default_max_mb=5)
+
+
+def _plugin_settings() -> dict[str, Any]:
+    return current_app.config.get("PLUGIN_SETTINGS", {}).get("tabular_ml", {}) or {}
 
 
 def _handle(callable_: Callable[[], Response | tuple[Any, int]]) -> Response:
@@ -73,7 +78,7 @@ def datasets_load() -> Response:
         json_payload = request.get_json(silent=True) or {}
         key = json_payload.get("key")
         if isinstance(key, str):
-            return dataset_load_from_key(key)
+            return dataset_load_from_key(key, _plugin_settings())
         file = request.files.get("csv")
         if not file:
             raise ValidationAppError(message="Dataset key or CSV upload required", code="tabular_ml.dataset.missing")
@@ -82,7 +87,7 @@ def datasets_load() -> Response:
             validate_mime([file], {"text/csv", "application/vnd.ms-excel"})
         except ValidationError as exc:
             raise ValidationAppError(message=str(exc), code="tabular_ml.upload.invalid", details=exc.details)
-        return dataset_load_from_bytes(file.read())
+        return dataset_load_from_bytes(file.read(), _plugin_settings())
 
     return _handle(_load)
 
@@ -164,7 +169,9 @@ def model_evaluate() -> Response:
 @bp.get("/system/config")
 def system_config() -> Response:
     def _call() -> dict[str, Any]:
-        return session_config(current_app.config)
+        config = session_config(current_app.config)
+        config["algorithms"] = available_algorithms()
+        return config
 
     return _handle(_call)
 

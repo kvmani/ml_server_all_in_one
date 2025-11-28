@@ -10,7 +10,12 @@ from common.errors import ValidationAppError
 from common.responses import fail, ok
 from common.validation import FileLimit, ValidationError, enforce_limits, validate_mime
 
-from ..core import SuperResolutionError, enhance_image
+from ..core import (
+    MAX_INPUT_PIXELS,
+    MAX_OUTPUT_PIXELS,
+    SuperResolutionError,
+    enhance_image,
+)
 
 api_bp = Blueprint("super_resolution_api", __name__, url_prefix="/api/super_resolution")
 
@@ -19,6 +24,28 @@ def _upload_limit() -> FileLimit:
     settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("super_resolution", {})
     upload = settings.get("upload")
     return FileLimit.from_settings(upload, default_max_files=1, default_max_mb=8)
+
+
+def _limits() -> dict[str, float | int]:
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("super_resolution", {})
+
+    def _int(key: str, default: int) -> int:
+        try:
+            return int(settings.get(key, default))
+        except (TypeError, ValueError):
+            return default
+
+    def _float(key: str, default: float) -> float:
+        try:
+            return float(settings.get(key, default))
+        except (TypeError, ValueError):
+            return default
+
+    return {
+        "max_scale": _float("max_scale", 4.0),
+        "max_input_pixels": _int("max_input_pixels", MAX_INPUT_PIXELS),
+        "max_output_pixels": _int("max_output_pixels", MAX_OUTPUT_PIXELS),
+    }
 
 
 @api_bp.post("/enhance")
@@ -48,9 +75,23 @@ def enhance() -> Response:
         return fail(
             ValidationAppError(message="Scale must be numeric", code="super_resolution.invalid_scale")
         )
+    limits = _limits()
+    if scale > limits["max_scale"]:
+        return fail(
+            ValidationAppError(
+                message=f"Scale exceeds maximum allowed ({limits['max_scale']})",
+                code="super_resolution.invalid_scale",
+            )
+        )
 
     try:
-        result = enhance_image(file.read(), scale=scale, mode=mode_value)
+        result = enhance_image(
+            file.read(),
+            scale=scale,
+            mode=mode_value,
+            max_input_pixels=int(limits["max_input_pixels"]),
+            max_output_pixels=int(limits["max_output_pixels"]),
+        )
     except SuperResolutionError as exc:
         return fail(
             ValidationAppError(message=str(exc), code="super_resolution.invalid_parameters")

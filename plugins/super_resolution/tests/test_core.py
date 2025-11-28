@@ -43,3 +43,23 @@ def test_enhance_image_rejects_unknown_mode():
         assert "Unsupported" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("Expected SuperResolutionError")
+
+
+def test_enhance_image_rejects_large_input(monkeypatch):
+    data = _sample_png(width=4, height=4)
+    try:
+        enhance_image(data, scale=1.0, max_input_pixels=10)
+    except SuperResolutionError as exc:
+        assert "maximum" in str(exc).lower()
+    else:  # pragma: no cover
+        raise AssertionError("Expected SuperResolutionError for oversized image")
+
+
+def test_enhance_image_rejects_large_output(monkeypatch):
+    data = _sample_png(width=10, height=10)
+    try:
+        enhance_image(data, scale=5, max_output_pixels=200)
+    except SuperResolutionError as exc:
+        assert "upscaled" in str(exc).lower()
+    else:  # pragma: no cover
+        raise AssertionError("Expected SuperResolutionError for oversized output")

@@ -161,19 +161,28 @@ export async function corrMatrix(session_id: string, columns?: string[]): Promis
   });
 }
 
+export type AlgorithmOption = {
+  id: string;
+  label: string;
+  tasks: Array<"classification" | "regression">;
+  provider: string;
+  available: boolean;
+  optional?: boolean;
+};
+
 export type TrainResponse = {
   run_id: string;
   model_summary: {
     task: "classification" | "regression";
     target: string;
-    algorithm: "logreg" | "rf" | "mlp";
+    algorithm: string;
     metrics: Record<string, number>;
     feature_importances?: Record<string, number>;
   };
   feature_importances?: Record<string, number> | null;
 };
 
-export async function trainModel(payload: { session_id: string; algo: "logreg" | "rf" | "mlp"; cv: number }): Promise<TrainResponse> {
+export async function trainModel(payload: { session_id: string; algo: string; cv: number }): Promise<TrainResponse> {
   return apiFetch<TrainResponse>("/api/tabular_ml/model/train", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -194,7 +203,10 @@ export async function evaluateModel(run_id: string): Promise<EvaluateResponse> {
   return apiFetch<EvaluateResponse>(url.toString());
 }
 
-export type ConfigResponse = { upload: { max_mb: number; max_files: number; max_columns: number; max_rows: number } };
+export type ConfigResponse = {
+  upload: { max_mb: number; max_files: number; max_columns: number; max_rows: number };
+  algorithms?: AlgorithmOption[];
+};
 
 export async function getConfig(): Promise<ConfigResponse> {
   return apiFetch<ConfigResponse>("/api/tabular_ml/system/config");

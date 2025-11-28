@@ -72,21 +72,24 @@ export default function HomePage() {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     const category = activeCategory.toLowerCase();
-    const matches = plugins.filter((plugin) => {
+    return plugins.filter((plugin) => {
       const haystack = `${plugin.title} ${plugin.summary} ${(plugin.tags || []).join(" ")}`.toLowerCase();
       const matchesQuery = !query || haystack.includes(query);
-      const matchesCategory =
-        category === "all tools" || plugin.category.toLowerCase() === category;
+      const matchesCategory = category === "all tools" || plugin.category.toLowerCase() === category;
       return matchesQuery && matchesCategory;
     });
-    if (matches.length && !preview) {
-      setPreview(matches[0]);
-    }
-    if (!matches.length && preview) {
+  }, [activeCategory, plugins, search]);
+
+  useEffect(() => {
+    if (!filtered.length) {
       setPreview(null);
+      return;
     }
-    return matches;
-  }, [activeCategory, plugins, preview, search]);
+    const hasPreview = preview && filtered.some((item) => item.blueprint === preview.blueprint);
+    if (!hasPreview) {
+      setPreview(filtered[0]);
+    }
+  }, [filtered, preview]);
 
   const grouped = useMemo(() => {
     const groups = new Map<string, PluginManifest[]>();

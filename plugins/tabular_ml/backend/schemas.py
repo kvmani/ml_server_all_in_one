@@ -78,7 +78,7 @@ class CorrRequest(SchemaModel):
 
 class TrainRequest(SchemaModel):
     session_id: str
-    algo: Literal["logreg", "rf", "mlp"]
+    algo: str
     params: dict[str, object] = Field(default_factory=dict)
     cv: int = Field(default=3, ge=2, le=10)
 

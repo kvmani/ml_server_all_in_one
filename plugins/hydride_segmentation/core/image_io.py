@@ -8,9 +8,14 @@ from io import BytesIO
 import numpy as np
 from PIL import Image
 
+MAX_IMAGE_PIXELS = 20_000_000
 
-def decode_image(data: bytes) -> np.ndarray:
+
+def decode_image(data: bytes, *, max_pixels: int = MAX_IMAGE_PIXELS) -> np.ndarray:
     image = Image.open(BytesIO(data))
+    width, height = image.size
+    if width * height > max_pixels:
+        raise ValueError("Image exceeds maximum allowed pixels")
     return np.array(image.convert("L"))
 
 

@@ -1,24 +1,38 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import type { PreprocessResponse, TrainResponse } from "../api";
+import type { AlgorithmOption, PreprocessResponse, TrainResponse } from "../api";
 
 export type TrainPanelProps = {
   sessionId?: string;
   preprocess?: PreprocessResponse;
   result?: TrainResponse;
   loading?: boolean;
-  onTrain: (payload: { session_id: string; algo: "logreg" | "rf" | "mlp"; cv: number }) => void;
+  algorithms?: AlgorithmOption[];
+  onTrain: (payload: { session_id: string; algo: string; cv: number }) => void;
 };
 
-const ALGORITHMS: Array<{ value: "logreg" | "rf" | "mlp"; label: string }> = [
-  { value: "logreg", label: "Logistic Regression" },
-  { value: "rf", label: "Random Forest" },
-  { value: "mlp", label: "Neural Network" },
+const FALLBACK_ALGOS: AlgorithmOption[] = [
+  { id: "logreg", label: "Logistic Regression", tasks: ["classification", "regression"], provider: "sklearn", available: true },
+  { id: "rf", label: "Random Forest", tasks: ["classification", "regression"], provider: "sklearn", available: true },
+  { id: "mlp", label: "Neural Network", tasks: ["classification", "regression"], provider: "sklearn", available: true },
 ];
 
-export function TrainPanel({ sessionId, preprocess, result, loading, onTrain }: TrainPanelProps) {
-  const [algo, setAlgo] = useState<"logreg" | "rf" | "mlp">("rf");
+export function TrainPanel({ sessionId, preprocess, result, loading, algorithms, onTrain }: TrainPanelProps) {
+  const task = preprocess?.summary.task;
+  const filtered = useMemo(() => {
+    const source = algorithms && algorithms.length ? algorithms : FALLBACK_ALGOS;
+    return source.filter((algo) => algo.available && (!task || algo.tasks.includes(task)));
+  }, [algorithms, task]);
+
+  const [algo, setAlgo] = useState<string>(() => filtered[0]?.id ?? "rf");
   const [cv, setCv] = useState(3);
+
+  // Keep selection in sync with available options
+  useEffect(() => {
+    if (!filtered.find((option) => option.id === algo) && filtered[0]) {
+      setAlgo(filtered[0].id);
+    }
+  }, [filtered, algo]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -41,9 +55,9 @@ export function TrainPanel({ sessionId, preprocess, result, loading, onTrain }: 
           <label className="tabular-field">
             <span className="tabular-field__label">Algorithm</span>
             <select value={algo} onChange={(event) => setAlgo(event.target.value as typeof algo)}>
-              {ALGORITHMS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
+              {filtered.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label} ({option.provider})
                 </option>
               ))}
             </select>

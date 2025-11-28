@@ -8,6 +8,7 @@ import HelpPage from "./pages/HelpPage";
 import HomePage from "./pages/HomePage";
 import HydrideSegmentationPage from "./pages/HydrideSegmentationPage";
 import PdfToolsPage from "./pages/PdfToolsPage";
+import PdfStitchPage from "./pages/PdfStitchPage";
 import TabularMlPage from "./pages/TabularMlPage";
 import UnitConverterPage from "./pages/UnitConverterPage";
 
@@ -22,6 +23,8 @@ function AppContent() {
         <Route path="/" element={<HomePage />} />
         <Route path="/tools/pdf_tools" element={<PdfToolsPage />} />
         <Route path="/pdf_tools/*" element={<Navigate to="/tools/pdf_tools" replace />} />
+        <Route path="/tools/pdf_stitch" element={<PdfStitchPage />} />
+        <Route path="/pdf_stitch/*" element={<Navigate to="/tools/pdf_stitch" replace />} />
         <Route path="/tools/unit_converter" element={<UnitConverterPage />} />
         <Route path="/unit_converter/*" element={<Navigate to="/tools/unit_converter" replace />} />
         <Route path="/tools/hydride_segmentation" element={<HydrideSegmentationPage />} />

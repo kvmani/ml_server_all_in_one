@@ -200,6 +200,66 @@
   background: transparent;
 }
 
+/* PDF Stitch */
+.pdf-queue {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.pdf-queue__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  background: rgba(8, 12, 26, 0.45);
+}
+
+.pdf-queue__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.pdf-queue__name {
+  font-weight: 600;
+}
+
+.pdf-queue__stats {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.pdf-plan {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.pdf-plan__label {
+  font-weight: 600;
+}
+
+.pdf-plan__input {
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: rgba(8, 12, 26, 0.45);
+  color: var(--color-text);
+  resize: vertical;
+}
+
+.pdf-plan__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 .merge-actions {
   justify-content: flex-start;
 }

@@ -17,6 +17,7 @@ import pandas as pd
 _ASSETS_ROOT = Path(__file__).resolve().parent.parent / "assets" / "datasets"
 _REGISTRY_PATH = _ASSETS_ROOT / "registry.json"
 _SESSION_TTL = timedelta(minutes=30)
+_DEFAULT_MAX_SESSIONS = 64
 
 
 @dataclass(slots=True)
@@ -40,9 +41,10 @@ class SessionData:
 class SessionStore:
     """Thread-safe in-memory session registry with TTL purging."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, max_sessions: int = _DEFAULT_MAX_SESSIONS) -> None:
         self._items: dict[str, SessionData] = {}
         self._lock = threading.Lock()
+        self._max_sessions = max_sessions
 
     def _purge_locked(self) -> None:
         now = datetime.now(timezone.utc)
@@ -58,6 +60,8 @@ class SessionStore:
         session_id = uuid.uuid4().hex
         with self._lock:
             self._purge_locked()
+            if len(self._items) >= self._max_sessions:
+                raise ValueError("Too many active sessions; please retry later.")
             data = SessionData(dataframe=dataframe.copy(), session_id=session_id)
             self._items[session_id] = data
         return session_id, data
@@ -79,6 +83,11 @@ class SessionStore:
                 for run_id in list(session.runs.keys()):
                     _RUN_INDEX.pop(run_id, None)
 
+    def set_max_sessions(self, max_sessions: int) -> None:
+        with self._lock:
+            self._max_sessions = max(max_sessions, 1)
+            self._purge_locked()
+
     def clear(self) -> None:
         with self._lock:
             self._items.clear()
@@ -98,6 +107,20 @@ def new_session(dataframe: pd.DataFrame) -> tuple[str, SessionData]:
 
 def clear_session(session_id: str) -> None:
     _SESSION_STORE.delete(session_id)
+
+
+def configure_session_store(max_sessions: int | None) -> None:
+    if max_sessions is None:
+        return
+    try:
+        _SESSION_STORE.set_max_sessions(int(max_sessions))
+    except (TypeError, ValueError):
+        return
+
+
+def reset_session_store() -> None:
+    _SESSION_STORE.clear()
+    _SESSION_STORE.set_max_sessions(_DEFAULT_MAX_SESSIONS)
 
 
 def list_builtin_datasets() -> list[dict[str, Any]]:
@@ -137,6 +160,16 @@ def load_csv_bytes(data: bytes) -> pd.DataFrame:
     if dataframe.empty:
         raise ValueError("CSV file must contain at least one row")
     return dataframe
+
+
+def enforce_dataframe_limits(
+    dataframe: pd.DataFrame, *, max_rows: int, max_columns: int
+) -> None:
+    rows, cols = dataframe.shape
+    if rows > max_rows:
+        raise ValueError(f"Dataset exceeds maximum rows ({max_rows})")
+    if cols > max_columns:
+        raise ValueError(f"Dataset exceeds maximum columns ({max_columns})")
 
 
 def dataframe_preview(dataframe: pd.DataFrame, *, head: int = 5) -> dict[str, Any]:
@@ -190,6 +223,7 @@ def session_config(app_config: Mapping[str, Any]) -> dict[str, Any]:
         "max_files": upload.get("max_files", 1),
         "max_columns": plugin_settings.get("max_columns", 200),
         "max_rows": plugin_settings.get("max_rows", 100000),
+        "max_sessions": plugin_settings.get("max_sessions", _DEFAULT_MAX_SESSIONS),
     }
     return {"upload": limits}
 
@@ -218,6 +252,9 @@ __all__ = [
     "describe_columns",
     "ensure_column_exists",
     "ensure_columns_exist",
+    "enforce_dataframe_limits",
+    "configure_session_store",
+    "reset_session_store",
     "get_run",
     "get_session",
     "locate_run",
