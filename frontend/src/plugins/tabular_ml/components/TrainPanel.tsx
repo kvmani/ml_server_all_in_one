@@ -47,7 +47,9 @@ export function TrainPanel({ sessionId, preprocess, result, loading, algorithms,
       <header className="tabular-section__header">
         <div>
           <h2 id="tabular-train-heading">Train</h2>
-          <p className="tabular-section__description">Select an algorithm and run cross-validated training.</p>
+          <p className="tabular-section__description">
+            Select a CPU-friendly algorithm (optional Torch MLP appears only if <code>torch</code> is installed).
+          </p>
         </div>
       </header>
       <form className="tabular-form" onSubmit={handleSubmit}>
@@ -71,6 +73,9 @@ export function TrainPanel({ sessionId, preprocess, result, loading, algorithms,
           {loading ? "Training..." : "Train model"}
         </button>
       </form>
+      <p className="form-field__hint">
+        Algorithms are sourced from server config; unavailable/optional ones are hidden automatically.
+      </p>
       {result ? (
         <div className="tabular-results" aria-live="polite">
           <div className="tabular-results__header">

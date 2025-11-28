@@ -17,6 +17,7 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
 const ICON_MAP: Record<string, string> = {
   hydride_segmentation: hydrideIcon,
   pdf_tools: pdfToolsIcon,
+  pdf_stitch: pdfToolsIcon,
   tabular_ml: tabularIcon,
   unit_converter: unitConverterIcon,
 };

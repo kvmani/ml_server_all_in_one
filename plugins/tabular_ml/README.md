@@ -21,12 +21,18 @@ Bundled datasets live in `assets/datasets/` alongside a `registry.json`. The reg
 
 ## Models and Optional Dependencies
 
-The training service now exposes only CPU-friendly estimators by design:
+The training service exposes only CPU-friendly estimators:
 
-- Built-in sklearn models (always available): Logistic/Ridge Regression, Random Forests, Gradient Boosting, Extra Trees, SVM (classification), and MLPs.
-- Optional PyTorch (CPU) MLP: advertised only when `torch` is importable. If PyTorch is absent, the API/UI omit the option and continue to function.
+- Built-in sklearn models (always available): Logistic/Ridge Regression, Random Forests, Gradient Boosting, Extra Trees, SVM (classification), and sklearn MLPs.
+- Optional PyTorch (CPU) MLP: advertised only when `torch` can be imported. If PyTorch is absent, the API/UI omit the option and continue to function.
 
-All algorithms are reported via `/api/tabular_ml/system/config` so the UI can render the available list at runtime without hard failures.
+The available list is returned via `/api/tabular_ml/system/config` so the UI can render only supported algorithms at runtime.
+
+Optional Torch installation (CPU only):
+
+```bash
+pip install torch==<cpu-version>
+```
 
 ## Testing
 

@@ -9,7 +9,7 @@ An offline-first Flask platform bundling microstructure analysis, PDF workflows,
 | **Hydride Segmentation** | Drag-and-drop zirconium alloy micrographs, configure CLAHE/adaptive threshold/morphology parameters, inspect overlays and metrics, and export PNG artefacts. |
 | **PDF Tools** | Queue up to 10 PDFs, reorder with drag handles, apply per-file page ranges, merge instantly, or split a single PDF into per-page downloads. |
 | **PDF Stitch** | Upload a few PDFs, assign aliases, and describe an exact multi-line page plan (including “end”) to assemble a custom sequence in one pass. |
-| **Tabular ML** | Upload CSV datasets (≤2 MB), preview rows, build scatter plots, auto-detect regression vs. classification, and train CPU-only models (Random Forest, Gradient Boosting, SVM, Extra Trees, optional Torch MLP if installed) with importances. |
+| **Tabular ML** | Upload CSV datasets (≤2 MB), preview rows, build scatter plots, auto-detect regression vs. classification, and train CPU-only models (Random Forest, Gradient Boosting, SVM, Extra Trees, sklearn MLP, optional Torch MLP if installed) with importances. |
 | **Unit Converter** | Convert between engineering units with Pint-backed accuracy, interval-aware temperature deltas, expression evaluation, and configurable precision. |
 | **Global Activity Log** | Persistent, non-invasive footer console that surfaces upload status, validation warnings, and task progress across every tool in real time. |
 
@@ -68,6 +68,13 @@ Detailed developer docs live under [`docs/`](docs/) with step-by-step guides and
    The application refuses to fall back to predictable defaults. Provide your own value in production—one secret per deploymen
 t. During local development you may skip this step, but a random key will be generated on every restart which invalidates sessi
 ons.
+
+3a. **Optional CPU Torch (for Torch MLP in Tabular ML)**
+
+   ```bash
+   # Optional: only if you want the Torch MLP algorithm to appear
+   pip install torch==<cpu-version>
+   ```
 
 4. **Build the frontend bundle**
 

@@ -11,3 +11,6 @@ pint==0.23
 pydantic==2.7.4
 black==24.10.0
 ruff==0.6.7
+
+# Optional CPU-only extras (install manually if you want Torch MLP in Tabular ML)
+# torch==2.4.1+cpu
