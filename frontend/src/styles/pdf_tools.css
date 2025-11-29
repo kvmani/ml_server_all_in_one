@@ -260,6 +260,16 @@
   flex-wrap: wrap;
 }
 
+.lattice-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.lattice-field input {
+  width: 100%;
+}
+
 .pdf-plan__tabs {
   display: inline-flex;
   gap: 0.5rem;

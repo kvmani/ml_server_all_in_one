@@ -77,7 +77,7 @@ def xrd() -> Response:
             tth_step=float(two_theta.get("step", 0.02)),
         )
     except Exception as exc:  # pragma: no cover - defensive
-        return fail(ValidationAppError(message=str(exc), code="crystallography.xrd_error"))
+        return fail(ValidationAppError(message="XRD calculation failed", code="crystallography.xrd_error", details={"error": str(exc)}))
 
     return ok({"peaks": peaks})
 

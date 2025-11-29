@@ -6,6 +6,7 @@ from typing import Iterable, Mapping, Sequence
 
 from common.validation import ValidationError
 from pymatgen.core import Lattice, Structure
+from pymatgen.io.cif import CifParser
 
 
 def parse_cif_bytes(data: bytes) -> Structure:
@@ -13,7 +14,15 @@ def parse_cif_bytes(data: bytes) -> Structure:
     if not data:
         raise ValidationError("Empty CIF payload")
     try:
-        return Structure.from_str(data.decode(), fmt="cif")
+        parser = CifParser.from_string(data.decode(), occupancy_tolerance=1.01, site_tolerance=1.5)
+        structures = parser.parse_structures(primitive=False, symmetrized=False)
+        if structures:
+            return structures[0]
+        # Some CIFs parse only with primitive=True
+        structures = parser.parse_structures(primitive=True, symmetrized=False)
+        if structures:
+            return structures[0]
+        raise ValidationError("Unable to parse CIF")
     except Exception as exc:  # pragma: no cover - pymatgen handles parsing
         raise ValidationError("Unable to parse CIF") from exc
 

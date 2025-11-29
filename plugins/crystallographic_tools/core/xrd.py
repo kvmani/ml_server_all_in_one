@@ -18,7 +18,7 @@ def compute_xrd_peaks(
 ) -> List[dict]:
     """Compute powder XRD peaks for a structure."""
 
-    calculator = XRDCalculator(wavelength=radiation)
+    calculator = XRDCalculator(wavelength=radiation or "CuKa")
     pattern = calculator.get_pattern(
         structure,
         two_theta_range=(tth_min, tth_max),
