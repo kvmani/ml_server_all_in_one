@@ -10,7 +10,13 @@ import { useStatus } from "../hooks/useStatus";
 import { useToolSettings } from "../hooks/useToolSettings";
 import { apiFetch } from "../utils/api";
 import { base64ToBlob, downloadBlob } from "../utils/files";
-import { buildManifest, parseInstructions, type ParsedInstruction } from "../plugins/pdf_stitch/parser";
+import {
+  buildManifest,
+  guidedRowsToManifest,
+  parseInstructions,
+  type ParsedInstruction,
+  type GuidedRow,
+} from "../plugins/pdf_stitch/parser";
 import "../styles/pdf_tools.css";
 
 type PluginConfig = { upload?: { max_files?: number; max_mb?: number } };
@@ -64,8 +70,13 @@ export default function PdfStitchPage() {
   const [parseError, setParseError] = useState<string | null>(null);
   const [outputName, setOutputName] = useState(prefs.defaultOutputName);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [planMode, setPlanMode] = useState<"text" | "guided">("text");
+  const [guidedRows, setGuidedRows] = useState<GuidedRow[]>([]);
   const pickerRef = useRef<HTMLInputElement | null>(null);
   const counterRef = useRef(0);
+  const rowCounterRef = useRef(0);
+  const [guidedErrors, setGuidedErrors] = useState<Record<string, string>>({});
+  const [pageEstimate, setPageEstimate] = useState<number | null>(null);
 
   const settingsFields = useMemo<SettingsField[]>(
     () => [
@@ -156,6 +167,30 @@ export default function PdfStitchPage() {
     setParseError(null);
   }, [entries]);
 
+  const addGuidedRow = useCallback(() => {
+    if (!entries.length) {
+      status.setStatus("Upload at least one PDF first.", "error");
+      return;
+    }
+    const nextId = `row-${(rowCounterRef.current += 1)}`;
+    const defaultAlias = entries[0]?.alias || "pdf-1";
+    setGuidedRows((current) => [...current, { id: nextId, alias: defaultAlias, pages: "all" }]);
+    setGuidedErrors((current) => ({ ...current, [nextId]: "" }));
+  }, [entries, status]);
+
+  const updateGuidedRow = useCallback((id: string, patch: Partial<GuidedRow>) => {
+    setGuidedRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+  }, []);
+
+  const removeGuidedRow = useCallback((id: string) => {
+    setGuidedRows((current) => current.filter((row) => row.id !== id));
+    setGuidedErrors((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }, []);
+
   const submit = useCallback(
     async (event?: FormEvent) => {
       event?.preventDefault();
@@ -163,13 +198,19 @@ export default function PdfStitchPage() {
         status.setStatus("Upload at least one PDF to stitch.", "error");
         return;
       }
-      const parsed = parseInstructions(instructions);
-      if (parsed.error) {
-        setParseError(parsed.error);
-        status.setStatus(parsed.error, "error");
-        return;
+      let manifest;
+      let error: string | undefined;
+      if (planMode === "text") {
+        const parsed = parseInstructions(instructions);
+        if (parsed.error) {
+          setParseError(parsed.error);
+          status.setStatus(parsed.error, "error");
+          return;
+        }
+        ({ manifest, error } = buildManifest(parsed.instructions, entries));
+      } else {
+        ({ manifest, error } = guidedRowsToManifest(guidedRows, entries));
       }
-      const { manifest, error } = buildManifest(parsed.instructions, entries);
       if (error) {
         setParseError(error);
         status.setStatus(error, "error");
@@ -177,6 +218,7 @@ export default function PdfStitchPage() {
       }
       status.setStatus("Stitching PDFs...", "progress");
       setParseError(null);
+      status.setStatus("Stitching PDFs...", "progress");
       const form = new FormData();
       manifest.forEach((item) => {
         form.append(item.field, item.file, item.file.name);
@@ -294,22 +336,98 @@ pdf-1: 6-end`;
                 {entries.length === 0 && <p className="muted">No PDFs queued yet.</p>}
               </div>
 
-              <form className="pdf-plan" onSubmit={submit}>
-                <label className="pdf-plan__label" htmlFor="plan">
-                  Page plan
-                </label>
-                <textarea
-                  id="plan"
-                  className="pdf-plan__input"
-                  rows={6}
-                  placeholder={helperText}
-                  value={instructions}
-                  onChange={(event) => setInstructions(event.target.value)}
-                />
-                <p className="muted small">
-                  Use one line per alias. Pages accept comma-separated numbers and ranges; use &quot;end&quot; for the
-                  last page. Leave blank to stitch every page in upload order.
-                </p>
+              <div className="pdf-plan">
+                <div className="pdf-plan__tabs" role="tablist">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={planMode === "text"}
+                    className={planMode === "text" ? "is-active" : ""}
+                    onClick={() => setPlanMode("text")}
+                  >
+                    Simple text
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={planMode === "guided"}
+                    className={planMode === "guided" ? "is-active" : ""}
+                    onClick={() => setPlanMode("guided")}
+                  >
+                    Guided builder
+                  </button>
+                </div>
+
+                {planMode === "text" ? (
+                  <div role="tabpanel">
+                    <label className="pdf-plan__label" htmlFor="plan">
+                      Page plan
+                    </label>
+                    <textarea
+                      id="plan"
+                      className="pdf-plan__input"
+                      rows={6}
+                      placeholder={helperText}
+                      value={instructions}
+                      onChange={(event) => setInstructions(event.target.value)}
+                    />
+                    <p className="muted small">
+                      One line per alias. Pages accept comma-separated numbers and ranges; use &quot;end&quot; for the
+                      last page.
+                    </p>
+                  </div>
+                ) : (
+                  <div role="tabpanel" className="pdf-guided">
+                    <div className="pdf-guided__rows">
+                      {guidedRows.map((row) => {
+                        const entry = entries.find((item) => item.alias === row.alias);
+                        return (
+                          <div key={row.id} className="pdf-guided__row">
+                            <label>
+                              Source
+                              <select
+                                value={row.alias}
+                                onChange={(event) => updateGuidedRow(row.id, { alias: event.target.value })}
+                              >
+                                {entries.map((entryOption) => (
+                                  <option key={entryOption.id} value={entryOption.alias}>
+                                    {entryOption.alias} — {entryOption.file.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <span className="muted small">
+                                Max pages: {entry?.metadata?.pages ?? "?"}
+                              </span>
+                            </label>
+                            <label>
+                              Pages
+                              <input
+                                type="text"
+                                value={row.pages}
+                                onChange={(event) => updateGuidedRow(row.id, { pages: event.target.value })}
+                                placeholder="e.g. 1-3,12"
+                              />
+                              {guidedErrors[row.id] ? (
+                                <span className="error-text">{guidedErrors[row.id]}</span>
+                              ) : null}
+                            </label>
+                            <button type="button" className="btn btn--ghost" onClick={() => removeGuidedRow(row.id)}>
+                              Remove
+                            </button>
+                          </div>
+                        );
+                      })}
+                      {!guidedRows.length && <p className="muted">Add rows to describe the exact sequence you want.</p>}
+                    </div>
+                    <button type="button" className="btn" onClick={addGuidedRow}>
+                      + Add row
+                    </button>
+                    <p className="muted small">
+                      Rows run top-to-bottom; each row is the next chunk of pages in the stitched PDF.
+                    </p>
+                  </div>
+                )}
+
                 {parseError ? (
                   <StatusMessage level="error" message={parseError} />
                 ) : status.status ? (
@@ -317,6 +435,9 @@ pdf-1: 6-end`;
                 ) : null}
 
                 <div className="pdf-plan__actions">
+                  <div className="muted">
+                    {pageEstimate !== null ? `Estimated output pages: ${pageEstimate}` : "Estimated output pages: ?" }
+                  </div>
                   <input
                     type="text"
                     className="input"
@@ -325,11 +446,11 @@ pdf-1: 6-end`;
                     onChange={(event) => setOutputName(event.target.value)}
                     aria-label="Output filename"
                   />
-                  <button type="submit" className="btn btn--primary">
+                  <button type="submit" className="btn btn--primary" onClick={submit}>
                     Stitch PDFs
                   </button>
                 </div>
-              </form>
+              </div>
             </section>
           </div>
         }
@@ -347,3 +468,74 @@ pdf-1: 6-end`;
     </section>
   );
 }
+  const validateRowPages = useCallback(
+    (row: GuidedRow) => {
+      const match = entries.find((entry) => entry.alias === row.alias);
+      const totalPages = match?.metadata?.pages;
+      if (!totalPages) {
+        setGuidedErrors((current) => ({ ...current, [row.id]: "" }));
+        return;
+      }
+      const parts = row.pages.split(",").map((p) => p.trim()).filter(Boolean);
+      for (const part of parts) {
+        if (part.toLowerCase() === "all" || part.toLowerCase() === "end") continue;
+        if (part.includes("-")) {
+          const [start, end] = part.split("-", 2).map((v) => Number(v));
+          if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > totalPages) {
+            setGuidedErrors((current) => ({ ...current, [row.id]: `Pages must be between 1 and ${totalPages}` }));
+            return;
+          }
+        } else {
+          const page = Number(part);
+          if (!Number.isInteger(page) || page < 1 || page > totalPages) {
+            setGuidedErrors((current) => ({ ...current, [row.id]: `Pages must be between 1 and ${totalPages}` }));
+            return;
+          }
+        }
+      }
+      setGuidedErrors((current) => ({ ...current, [row.id]: "" }));
+    },
+    [entries],
+  );
+
+  const recomputeEstimate = useCallback(
+    (rows: GuidedRow[]) => {
+      let total = 0;
+      for (const row of rows) {
+        const match = entries.find((entry) => entry.alias === row.alias);
+        const totalPages = match?.metadata?.pages;
+        if (!totalPages) {
+          setPageEstimate(null);
+          return;
+        }
+        const parts = row.pages.split(",").map((p) => p.trim()).filter(Boolean);
+        let count = 0;
+        for (const part of parts) {
+          if (part.toLowerCase() === "all") {
+            count += totalPages;
+            continue;
+          }
+          if (part.toLowerCase() === "end") {
+            count += 1;
+            continue;
+          }
+          if (part.includes("-")) {
+            const [start, end] = part.split("-", 2).map((v) => Number(v));
+            if (Number.isInteger(start) && Number.isInteger(end) && end >= start) {
+              count += end - start + 1;
+            }
+          } else {
+            count += 1;
+          }
+        }
+        total += count;
+      }
+      setPageEstimate(total || null);
+    },
+    [entries],
+  );
+
+  useEffect(() => {
+    guidedRows.forEach((row) => validateRowPages(row));
+    recomputeEstimate(guidedRows);
+  }, [guidedRows, validateRowPages, recomputeEstimate]);

@@ -57,3 +57,25 @@ export function buildManifest(
   }
   return { manifest };
 }
+
+export type GuidedRow = { id: string; alias: string; pages: string };
+export type GuidedEntry = { alias: string; file: File; pages?: number };
+
+export function guidedRowsToManifest(
+  rows: GuidedRow[],
+  entries: GuidedEntry[],
+): { manifest: { field: string; alias: string; pages: string; file: File }[]; error?: string } {
+  if (!rows.length) return { manifest: [], error: "Add at least one step to stitch." };
+  const manifest = [];
+  for (const [index, row] of rows.entries()) {
+    const match = entries.find((entry) => entry.alias === row.alias);
+    if (!match) return { manifest: [], error: `Alias '${row.alias}' has no matching file.` };
+    manifest.push({
+      field: `file-${index}`,
+      alias: row.alias,
+      pages: row.pages.trim() || "all",
+      file: match.file,
+    });
+  }
+  return { manifest };
+}
