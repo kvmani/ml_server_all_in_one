@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useMemo, useRef, useState, useEffect } from "react";
 import pdfToolsIcon from "../assets/pdf_tools_icon.png";
 import { Dropzone } from "../components/Dropzone";
 import { SettingsModal, type SettingsField } from "../components/SettingsModal";
@@ -65,7 +65,7 @@ export default function PdfStitchPage() {
     fetchMetadata: true,
     defaultOutputName: "stitched.pdf",
   });
-  const [entries, setEntries] = useState<StitchEntry[]>([]);
+  const [uploads, setUploads] = useState<StitchEntry[]>([]);
   const [instructions, setInstructions] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
   const [outputName, setOutputName] = useState(prefs.defaultOutputName);
@@ -111,7 +111,7 @@ export default function PdfStitchPage() {
       const messages: string[] = [];
       for (const file of files) {
         if (!file.type.includes("pdf") && !file.name.toLowerCase().endsWith(".pdf")) continue;
-        if (entries.length + next.length >= limits.maxFiles) {
+        if (uploads.length + next.length >= limits.maxFiles) {
           messages.push(`Limit of ${limits.maxFiles} files reached`);
           break;
         }
@@ -120,17 +120,17 @@ export default function PdfStitchPage() {
           continue;
         }
         const id = `stitch-${(counterRef.current += 1)}`;
-        const alias = `pdf-${entries.length + next.length + 1}`;
+        const alias = `pdf-${uploads.length + next.length + 1}`;
         const entry: StitchEntry = { id, alias, file, url: URL.createObjectURL(file), metadata: undefined };
         next.push(entry);
       }
       if (next.length) {
-        setEntries((current) => [...current, ...next]);
-        status.setStatus(`${entries.length + next.length} file(s) queued`, "success");
+        setUploads((current) => [...current, ...next]);
+        status.setStatus(`${uploads.length + next.length} file(s) queued`, "success");
         if (prefs.fetchMetadata) {
           for (const entry of next) {
             const meta = await requestMetadata(entry.file);
-            setEntries((current) =>
+            setUploads((current) =>
               current.map((item) => (item.id === entry.id ? { ...item, metadata: meta } : item)),
             );
           }
@@ -139,7 +139,7 @@ export default function PdfStitchPage() {
         status.setStatus(messages.join(". "), "warning");
       }
     },
-    [entries.length, limits.maxFiles, limits.maxMb, prefs.fetchMetadata, status],
+    [uploads.length, limits.maxFiles, limits.maxMb, prefs.fetchMetadata, status],
   );
 
   const handleFileInput = useCallback(
@@ -161,22 +161,22 @@ export default function PdfStitchPage() {
   }, [status]);
 
   const generateTemplate = useCallback(() => {
-    if (!entries.length) return;
-    const lines = entries.map((entry) => `${entry.alias}: all;`);
+    if (!uploads.length) return;
+    const lines = uploads.map((entry) => `${entry.alias}: all;`);
     setInstructions(lines.join("\n"));
     setParseError(null);
-  }, [entries]);
+  }, [uploads]);
 
   const addGuidedRow = useCallback(() => {
-    if (!entries.length) {
+    if (!uploads.length) {
       status.setStatus("Upload at least one PDF first.", "error");
       return;
     }
     const nextId = `row-${(rowCounterRef.current += 1)}`;
-    const defaultAlias = entries[0]?.alias || "pdf-1";
+    const defaultAlias = uploads[0]?.alias || "pdf-1";
     setGuidedRows((current) => [...current, { id: nextId, alias: defaultAlias, pages: "all" }]);
     setGuidedErrors((current) => ({ ...current, [nextId]: "" }));
-  }, [entries, status]);
+  }, [uploads, status]);
 
   const updateGuidedRow = useCallback((id: string, patch: Partial<GuidedRow>) => {
     setGuidedRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -191,10 +191,83 @@ export default function PdfStitchPage() {
     });
   }, []);
 
+  const validateRowPages = useCallback(
+    (row: GuidedRow) => {
+      const match = uploads.find((entry) => entry.alias === row.alias);
+      const totalPages = match?.metadata?.pages;
+      if (!totalPages) {
+        setGuidedErrors((current) => ({ ...current, [row.id]: "" }));
+        return;
+      }
+      const parts = row.pages.split(",").map((p) => p.trim()).filter(Boolean);
+      for (const part of parts) {
+        if (part.toLowerCase() === "all" || part.toLowerCase() === "end") continue;
+        if (part.includes("-")) {
+          const [start, end] = part.split("-", 2).map((v) => Number(v));
+          if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > totalPages) {
+            setGuidedErrors((current) => ({ ...current, [row.id]: `Pages must be between 1 and ${totalPages}` }));
+            return;
+          }
+        } else {
+          const page = Number(part);
+          if (!Number.isInteger(page) || page < 1 || page > totalPages) {
+            setGuidedErrors((current) => ({ ...current, [row.id]: `Pages must be between 1 and ${totalPages}` }));
+            return;
+          }
+        }
+      }
+      setGuidedErrors((current) => ({ ...current, [row.id]: "" }));
+    },
+    [uploads],
+  );
+
+  const recomputeEstimate = useCallback(
+    (rows: GuidedRow[]) => {
+      let total = 0;
+      for (const row of rows) {
+        const match = uploads.find((entry) => entry.alias === row.alias);
+        const totalPages = match?.metadata?.pages;
+        if (!totalPages) {
+          setPageEstimate(null);
+          return;
+        }
+        const parts = row.pages.split(",").map((p) => p.trim()).filter(Boolean);
+        let count = 0;
+        for (const part of parts) {
+          if (part.toLowerCase() === "all") {
+            count += totalPages;
+            continue;
+          }
+          if (part.toLowerCase() === "end") {
+            count += 1;
+            continue;
+          }
+          if (part.includes("-")) {
+            const [start, end] = part.split("-", 2).map((v) => Number(v));
+            if (Number.isInteger(start) && Number.isInteger(end) && end >= start) {
+              count += end - start + 1;
+            }
+          } else {
+            count += 1;
+          }
+        }
+        total += count;
+      }
+      setPageEstimate(total || null);
+    },
+    [uploads],
+  );
+
+  useEffect(() => {
+    guidedRows.forEach((row) => validateRowPages(row));
+    recomputeEstimate(guidedRows);
+  }, [guidedRows, validateRowPages, recomputeEstimate]);
+
+
   const submit = useCallback(
     async (event?: FormEvent) => {
       event?.preventDefault();
-      if (!entries.length) {
+      if (!uploads.length) {
         status.setStatus("Upload at least one PDF to stitch.", "error");
         return;
       }
@@ -207,9 +280,9 @@ export default function PdfStitchPage() {
           status.setStatus(parsed.error, "error");
           return;
         }
-        ({ manifest, error } = buildManifest(parsed.instructions, entries));
+        ({ manifest, error } = buildManifest(parsed.instructions, uploads));
       } else {
-        ({ manifest, error } = guidedRowsToManifest(guidedRows, entries));
+        ({ manifest, error } = guidedRowsToManifest(guidedRows, uploads));
       }
       if (error) {
         setParseError(error);
@@ -246,7 +319,7 @@ export default function PdfStitchPage() {
         status.setStatus(message, "error");
       }
     },
-    [entries, instructions, outputName, prefs.autoDownload, prefs.defaultOutputName, status, withLoader],
+    [uploads, instructions, outputName, prefs.autoDownload, prefs.defaultOutputName, status, withLoader],
   );
 
   const helperText = `Describe your page plan, one line per source:
@@ -297,7 +370,7 @@ pdf-1: 6-end`;
                   <button className="btn" type="button" onClick={() => pickerRef.current?.click()}>
                     Add PDF
                   </button>
-                  <button className="btn btn--ghost" type="button" onClick={generateTemplate} disabled={!entries.length}>
+                  <button className="btn btn--ghost" type="button" onClick={generateTemplate} disabled={!uploads.length}>
                     Prefill plan
                   </button>
                 </div>
@@ -319,7 +392,7 @@ pdf-1: 6-end`;
               />
 
               <div className="pdf-queue">
-                {entries.map((entry) => (
+                {uploads.map((entry) => (
                   <div key={entry.id} className="pdf-queue__row">
                     <div className="pdf-queue__meta">
                       <div className="badge">{entry.alias}</div>
@@ -333,7 +406,7 @@ pdf-1: 6-end`;
                     </div>
                   </div>
                 ))}
-                {entries.length === 0 && <p className="muted">No PDFs queued yet.</p>}
+                {uploads.length === 0 && <p className="muted">No PDFs queued yet.</p>}
               </div>
 
               <div className="pdf-plan">
@@ -380,7 +453,7 @@ pdf-1: 6-end`;
                   <div role="tabpanel" className="pdf-guided">
                     <div className="pdf-guided__rows">
                       {guidedRows.map((row) => {
-                        const entry = entries.find((item) => item.alias === row.alias);
+                        const entry = uploads.find((item) => item.alias === row.alias);
                         return (
                           <div key={row.id} className="pdf-guided__row">
                             <label>
@@ -389,7 +462,7 @@ pdf-1: 6-end`;
                                 value={row.alias}
                                 onChange={(event) => updateGuidedRow(row.id, { alias: event.target.value })}
                               >
-                                {entries.map((entryOption) => (
+                                {uploads.map((entryOption) => (
                                   <option key={entryOption.id} value={entryOption.alias}>
                                     {entryOption.alias} — {entryOption.file.name}
                                   </option>
@@ -467,75 +540,5 @@ pdf-1: 6-end`;
       />
     </section>
   );
+
 }
-  const validateRowPages = useCallback(
-    (row: GuidedRow) => {
-      const match = entries.find((entry) => entry.alias === row.alias);
-      const totalPages = match?.metadata?.pages;
-      if (!totalPages) {
-        setGuidedErrors((current) => ({ ...current, [row.id]: "" }));
-        return;
-      }
-      const parts = row.pages.split(",").map((p) => p.trim()).filter(Boolean);
-      for (const part of parts) {
-        if (part.toLowerCase() === "all" || part.toLowerCase() === "end") continue;
-        if (part.includes("-")) {
-          const [start, end] = part.split("-", 2).map((v) => Number(v));
-          if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > totalPages) {
-            setGuidedErrors((current) => ({ ...current, [row.id]: `Pages must be between 1 and ${totalPages}` }));
-            return;
-          }
-        } else {
-          const page = Number(part);
-          if (!Number.isInteger(page) || page < 1 || page > totalPages) {
-            setGuidedErrors((current) => ({ ...current, [row.id]: `Pages must be between 1 and ${totalPages}` }));
-            return;
-          }
-        }
-      }
-      setGuidedErrors((current) => ({ ...current, [row.id]: "" }));
-    },
-    [entries],
-  );
-
-  const recomputeEstimate = useCallback(
-    (rows: GuidedRow[]) => {
-      let total = 0;
-      for (const row of rows) {
-        const match = entries.find((entry) => entry.alias === row.alias);
-        const totalPages = match?.metadata?.pages;
-        if (!totalPages) {
-          setPageEstimate(null);
-          return;
-        }
-        const parts = row.pages.split(",").map((p) => p.trim()).filter(Boolean);
-        let count = 0;
-        for (const part of parts) {
-          if (part.toLowerCase() === "all") {
-            count += totalPages;
-            continue;
-          }
-          if (part.toLowerCase() === "end") {
-            count += 1;
-            continue;
-          }
-          if (part.includes("-")) {
-            const [start, end] = part.split("-", 2).map((v) => Number(v));
-            if (Number.isInteger(start) && Number.isInteger(end) && end >= start) {
-              count += end - start + 1;
-            }
-          } else {
-            count += 1;
-          }
-        }
-        total += count;
-      }
-      setPageEstimate(total || null);
-    },
-    [entries],
-  );
-
-  useEffect(() => {
-    guidedRows.forEach((row) => validateRowPages(row));
-    recomputeEstimate(guidedRows);
-  }, [guidedRows, validateRowPages, recomputeEstimate]);
