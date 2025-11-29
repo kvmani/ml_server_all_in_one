@@ -22,7 +22,6 @@ def compute_xrd_peaks(
     pattern = calculator.get_pattern(
         structure,
         two_theta_range=(tth_min, tth_max),
-        resolution=tth_step,
     )
     peaks: List[dict] = []
     for i, two_theta in enumerate(pattern.x):

@@ -1,4 +1,5 @@
 import json
+from io import BytesIO
 from app import create_app
 
 
@@ -31,8 +32,7 @@ def test_load_cif_endpoint():
     client = _client()
     resp = client.post(
         "/api/crystallographic_tools/load_cif",
-        data={"file": (SIMPLE_CIF, "si.cif")},
-        content_type="multipart/form-data",
+        data={"file": (BytesIO(SIMPLE_CIF), "si.cif")},
     )
     assert resp.status_code == 200
     data = resp.get_json()

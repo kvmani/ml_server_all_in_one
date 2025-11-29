@@ -13,18 +13,25 @@ def parse_cif_bytes(data: bytes) -> Structure:
     """Parse CIF bytes into a pymatgen Structure."""
     if not data:
         raise ValidationError("Empty CIF payload")
-    try:
-        parser = CifParser.from_string(data.decode(), occupancy_tolerance=1.01, site_tolerance=1.5)
-        structures = parser.parse_structures(primitive=False, symmetrized=False)
-        if structures:
-            return structures[0]
-        # Some CIFs parse only with primitive=True
-        structures = parser.parse_structures(primitive=True, symmetrized=False)
-        if structures:
-            return structures[0]
-        raise ValidationError("Unable to parse CIF")
-    except Exception as exc:  # pragma: no cover - pymatgen handles parsing
-        raise ValidationError("Unable to parse CIF") from exc
+
+    cif_text = data.decode(errors="ignore").strip()
+    if not cif_text:
+        raise ValidationError("Empty CIF payload")
+
+    last_error: Exception | None = None
+    # Try a strict parse first, then fall back to a lenient occupancy tolerance
+    # for CIFs that omit occupancy columns or have summed occupancies > 1.
+    for occupancy_tolerance in (1.0, 100.0):
+        try:
+            parser = CifParser.from_str(cif_text, occupancy_tolerance=occupancy_tolerance)
+            structures = parser.parse_structures(primitive=False)
+            if structures:
+                return structures[0]
+        except Exception as exc:  # pragma: no cover - pymatgen handles parsing
+            last_error = exc
+            continue
+
+    raise ValidationError("Unable to parse CIF") from last_error
 
 
 def structure_to_payload(structure: Structure) -> dict:
@@ -76,21 +83,38 @@ def edit_structure(
             raise ValidationError("Invalid lattice parameters") from exc
         if min(a, b, c) <= 0:
             raise ValidationError("Lattice lengths must be positive")
-        updated.modify_lattice(Lattice.from_parameters(a, b, c, alpha, beta, gamma))
+        new_lattice = Lattice.from_parameters(a, b, c, alpha, beta, gamma)
+    else:
+        new_lattice = updated.lattice
 
     if sites:
         if len(sites) != len(updated):
             raise ValidationError("Site count mismatch for edit")
+        new_species: list[str] = []
+        new_coords: list[list[float]] = []
         for idx, site in enumerate(sites):
             species = site.get("species", str(updated[idx].specie))
-            coords = site.get("frac_coords")
-            if coords is None:
-                coords = updated[idx].frac_coords
+            coords = site.get("frac_coords", updated[idx].frac_coords)
             try:
                 coords = [float(x) for x in coords]
             except (TypeError, ValueError) as exc:
                 raise ValidationError("Invalid fractional coordinates") from exc
-            updated.replace(idx, species, coords, coords_are_cartesian=False)
+            new_species.append(species)
+            new_coords.append(coords)
+        updated = Structure(
+            updated.lattice,
+            new_species,
+            new_coords,
+            site_properties=dict(updated.site_properties),
+        )
+
+    if lattice_params:
+        updated = Structure(
+            new_lattice,
+            [site.specie for site in updated],
+            [site.frac_coords for site in updated],
+            site_properties=dict(updated.site_properties),
+        )
 
     if supercell:
         try:
