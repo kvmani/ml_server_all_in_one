@@ -59,7 +59,18 @@ def compute_saed_pattern(
     zone_tol_rad = math.radians(zone_tolerance_deg)
     rotation_rad = math.radians(rotation_deg)
 
-    spots: List[dict] = []
+    spots: List[dict] = [
+        {
+            "hkl": [0, 0, 0],
+            "x": 0.0,
+            "y": 0.0,
+            "g_magnitude": 0.0,
+            "d_spacing": float("inf"),
+            "intensity": 1.0,
+            "two_theta": 0.0,
+        }
+    ]
+    max_abs_position = 0.0
     for h in range(-max_index, max_index + 1):
         for k in range(-max_index, max_index + 1):
             for l in range(-max_index, max_index + 1):
@@ -85,6 +96,7 @@ def compute_saed_pattern(
                     x, y = rot_x, rot_y
                 radius_mm = camera_length_mm * wavelength * g_len / 10.0
                 two_theta = math.degrees(math.asin(min(1.0, 0.5 * wavelength * g_len)))
+                max_abs_position = max(max_abs_position, abs(x), abs(y))
                 spots.append(
                     {
                         "hkl": hkl,
@@ -97,9 +109,19 @@ def compute_saed_pattern(
                     }
                 )
 
-    spots.sort(key=lambda item: item["intensity"], reverse=True)
+    # Mirror spots into all quadrants to ensure symmetry in the plot
+    mirrored: list[dict] = []
+    for spot in spots:
+        if spot["g_magnitude"] == 0:
+            mirrored.append(spot)
+            continue
+        x, y = spot["x"], spot["y"]
+        for sx, sy in [(1, 1), (-1, 1), (1, -1), (-1, -1)]:
+            mirrored.append({**spot, "x": x * sx, "y": y * sy})
+
+    mirrored.sort(key=lambda item: item["intensity"], reverse=True)
     return {
-        "spots": spots,
+        "spots": mirrored,
         "calibration": {
             "wavelength_angstrom": wavelength,
             "camera_length_mm": camera_length_mm,
@@ -112,6 +134,7 @@ def compute_saed_pattern(
             "x": basis_x.tolist(),
             "y": basis_y.tolist(),
         },
+        "range": max_abs_position if max_abs_position else 1.0,
     }
 
 

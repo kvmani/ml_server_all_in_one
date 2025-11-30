@@ -12,6 +12,8 @@ def test_saed_pattern(simple_cif_bytes):
         g_max=10.0,
     )
     assert result["spots"]
-    top = result["spots"][0]
-    assert {"hkl", "x", "y", "intensity"} <= set(top.keys())
+    # Includes origin and mirrored quadrants
+    assert any(spot["hkl"] == [0, 0, 0] for spot in result["spots"])
+    assert any(spot["x"] < 0 for spot in result["spots"])
+    assert any(spot["x"] > 0 for spot in result["spots"])
     assert result["calibration"]["wavelength_angstrom"] > 0

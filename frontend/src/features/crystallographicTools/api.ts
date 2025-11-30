@@ -43,13 +43,14 @@ export async function editCif(payload: {
   });
 }
 
-export type XrdPeak = { two_theta: number; intensity: number; d_spacing: number; hkl: number[] };
+export type XrdPeak = { two_theta: number; intensity: number; intensity_normalized: number; d_spacing: number; hkl: number[] };
+export type XrdCurvePoint = { two_theta: number; intensity: number };
 
 export async function xrdPattern(payload: {
   cif: string;
   radiation?: string;
   two_theta?: { min?: number; max?: number; step?: number };
-}): Promise<{ peaks: XrdPeak[] }> {
+}): Promise<{ peaks: XrdPeak[]; curve: XrdCurvePoint[]; range: { min: number; max: number } }> {
   const body = {
     cif: payload.cif,
     radiation: payload.radiation || "CuKa",
@@ -59,7 +60,7 @@ export async function xrdPattern(payload: {
       step: payload.two_theta?.step ?? 0.02,
     },
   };
-  return apiFetch<{ peaks: XrdPeak[] }>("/api/crystallographic_tools/xrd", {
+  return apiFetch<{ peaks: XrdPeak[]; curve: XrdCurvePoint[]; range: { min: number; max: number } }>("/api/crystallographic_tools/xrd", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

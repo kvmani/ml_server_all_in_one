@@ -1,8 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, ComposedChart, Line, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, Bar, ReferenceLine } from "recharts";
 import crystallographyIcon from "../assets/pdf_tools_icon.png";
 import { StatusMessage } from "../components/StatusMessage";
-import { ToolShell, ToolShellIntro } from "../components/ToolShell";
 import { useLoading } from "../contexts/LoadingContext";
 import { useStatus } from "../hooks/useStatus";
 import {
@@ -15,6 +14,7 @@ import {
   type SaedPattern,
   type StructurePayload,
   type XrdPeak,
+  type XrdCurvePoint,
 } from "../features/crystallographicTools/api";
 import { downloadBlob } from "../utils/files";
 import "../styles/crystallography.css";
@@ -47,6 +47,8 @@ export default function CrystallographicToolsPage() {
   const [structure, setStructure] = useState<StructurePayload | null>(null);
   const [cifText, setCifText] = useState("");
   const [peaks, setPeaks] = useState<XrdPeak[]>([]);
+  const [xrdCurve, setXrdCurve] = useState<XrdCurvePoint[]>([]);
+  const [xrdRange, setXrdRange] = useState<{ min: number; max: number }>({ min: 10, max: 80 });
   const [saedPattern, setSaedPattern] = useState<SaedPattern | null>(null);
   const [calculator, setCalculator] = useState<CalculatorResult | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("xrd");
@@ -113,7 +115,7 @@ export default function CrystallographicToolsPage() {
   const handleXrd = useCallback(async () => {
     if (!structure) return;
     try {
-      const { peaks } = await withLoader(() =>
+      const { peaks, curve, range } = await withLoader(() =>
         xrdPattern({
           cif: cifText || structure.cif,
           radiation,
@@ -121,6 +123,8 @@ export default function CrystallographicToolsPage() {
         }),
       );
       setPeaks(peaks);
+      setXrdCurve(curve);
+      setXrdRange(range);
       status.setStatus("XRD peaks computed", "success");
     } catch (error) {
       status.setStatus(error instanceof Error ? error.message : "XRD calculation failed", "error");
@@ -189,398 +193,440 @@ export default function CrystallographicToolsPage() {
 
   return (
     <section className="shell surface-block cryst-shell" aria-labelledby="cryst-tools-title">
-      <ToolShell
-        intro={
-          <ToolShellIntro
-            icon={crystallographyIcon}
-            titleId="cryst-tools-title"
-            category="Materials Analysis"
-            title="Crystallographic Tools"
-            summary="Load a CIF once and explore powder XRD, SAED, and crystallographic calculators without re-uploading."
-          >
-            <p className="muted">Supports shared phase across tabs, SAED spot maps, and symmetry-aware angle calculations.</p>
-          </ToolShellIntro>
-        }
-        workspace={
-          <div className="cryst-layout">
-            <div className="cryst-column">
-              <section className="cryst-panel">
+      <header className="cryst-compact__header">
+        <div className="cryst-compact__title">
+          <div className="cryst-compact__icon" aria-hidden="true">
+            <img src={crystallographyIcon} alt="" />
+          </div>
+          <div>
+            <p className="eyebrow">Materials analysis</p>
+            <h1 id="cryst-tools-title" className="section-heading">
+              Crystallographic Tools
+            </h1>
+            <p className="muted">CIF-backed XRD, SAED, and calculators in one shared workspace.</p>
+          </div>
+        </div>
+      </header>
+
+      <div className="cryst-compact__grid">
+        <aside className="cryst-sidebar">
+          <section className="cryst-card">
+            <p className="eyebrow">Workspace</p>
+            <p className="cryst-card__summary">Load one CIF and reuse it across tabs.</p>
+            {structure ? (
+              <dl className="cryst-card__meta">
+                <div>
+                  <dt>Formula</dt>
+                  <dd>{structure.formula}</dd>
+                </div>
+                <div>
+                  <dt>Sites</dt>
+                  <dd>{structure.num_sites}</dd>
+                </div>
+                <div>
+                  <dt>System</dt>
+                  <dd>{structure.crystal_system || (structure.is_hexagonal ? "hexagonal" : "—")}</dd>
+                </div>
+              </dl>
+            ) : (
+              <p className="muted">Upload a CIF to begin.</p>
+            )}
+          </section>
+
+          <section className="cryst-panel">
+            <header className="cryst-panel__header">
+              <div>
+                <p className="eyebrow">CIF</p>
+                <h2>Load & edit</h2>
+                <p className="muted">Upload once; edits propagate to all tabs.</p>
+              </div>
+              <div className="cryst-actions">
+                <button className="btn" type="button" onClick={() => fileInput.current?.click()}>
+                  Upload CIF
+                </button>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept=".cif"
+                  className="visually-hidden"
+                  onChange={() => handleUpload()}
+                />
+              </div>
+            </header>
+
+            {structure ? (
+              <>
+                <div className="cryst-lattice-grid">
+                  {latticeFields.map((field) => (
+                    <label key={field.key} className="cryst-label">
+                      {field.label}
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={((structure.lattice as any)[field.key] as number).toFixed(3)}
+                        onChange={(event) =>
+                          setStructure((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  lattice: { ...current.lattice, [field.key]: Number(event.target.value) },
+                                }
+                              : current,
+                          )
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="cryst-panel__actions">
+                  <button className="btn" type="button" onClick={handleEdit}>
+                    Apply edits
+                  </button>
+                  <button className="btn btn--subtle" type="button" onClick={downloadCif}>
+                    Download CIF
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="muted">No structure loaded.</p>
+            )}
+          </section>
+        </aside>
+
+        <main className="cryst-main">
+          <div className="cryst-tabs" role="tablist" aria-label="Crystallographic tools">
+            {[
+              { key: "xrd", label: "XRD peaks" },
+              { key: "tem", label: "TEM / SAED" },
+              { key: "calculator", label: "Calculator" },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                role="tab"
+                className={activeTab === tab.key ? "cryst-tab active" : "cryst-tab"}
+                aria-selected={activeTab === tab.key}
+                onClick={() => setActiveTab(tab.key as TabKey)}
+                type="button"
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="cryst-panel">
+            {activeTab === "xrd" && (
+              <>
                 <header className="cryst-panel__header">
                   <div>
-                    <p className="eyebrow">CIF</p>
-                    <h2>Load & edit structure</h2>
-                    <p className="muted">Upload once; all tabs reuse the loaded phase and CIF text.</p>
-                  </div>
-                  <div className="cryst-actions">
-                    <button className="btn" type="button" onClick={() => fileInput.current?.click()}>
-                      Upload CIF
-                    </button>
-                    <input
-                      ref={fileInput}
-                      type="file"
-                      accept=".cif"
-                      className="visually-hidden"
-                      onChange={() => handleUpload()}
-                    />
+                    <p className="eyebrow">Powder XRD</p>
+                    <h2>Simulate diffraction peaks</h2>
                   </div>
                 </header>
-
-                {structure ? (
-                  <>
-                    <div className="cryst-lattice-grid">
-                      {latticeFields.map((field) => (
-                        <label key={field.key} className="cryst-label">
-                          {field.label}
-                          <input
+                <div className="cryst-grid">
+                  <label className="cryst-label">
+                    Radiation
+                    <input value={radiation} onChange={(e) => setRadiation(e.target.value)} />
+                  </label>
+                  <label className="cryst-label">
+                    2θ min
+                    <input type="number" value={thetaMin} onChange={(e) => setThetaMin(Number(e.target.value))} />
+                  </label>
+                  <label className="cryst-label">
+                    2θ max
+                    <input type="number" value={thetaMax} onChange={(e) => setThetaMax(Number(e.target.value))} />
+                  </label>
+                  <label className="cryst-label">
+                    Step
+                    <input type="number" value={thetaStep} step="0.01" onChange={(e) => setThetaStep(Number(e.target.value))} />
+                  </label>
+                </div>
+                <div className="cryst-panel__actions">
+                  <button className="btn" type="button" disabled={!structure} onClick={handleXrd}>
+                    Compute XRD
+                  </button>
+                </div>
+                {peaks.length ? (
+                  <div className="cryst-xrd">
+                    <div className="cryst-xrd__chart">
+                      <ResponsiveContainer width="100%" height={260}>
+                        <ComposedChart
+                          data={xrdCurve}
+                          margin={{ top: 10, bottom: 20, left: 10, right: 10 }}
+                          syncId="xrd"
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            dataKey="two_theta"
+                            name="2θ"
+                            unit="°"
                             type="number"
-                            step="0.01"
-                            value={((structure.lattice as any)[field.key] as number).toFixed(3)}
-                            onChange={(event) =>
-                              setStructure((current) =>
-                                current
-                                  ? {
-                                      ...current,
-                                      lattice: { ...current.lattice, [field.key]: Number(event.target.value) },
-                                    }
-                                  : current,
-                              )
-                            }
+                            domain={[xrdRange.min, xrdRange.max]}
+                            allowDataOverflow
                           />
-                        </label>
+                          <YAxis dataKey="intensity" name="I" domain={[0, 105]} />
+                          <Tooltip cursor={{ strokeDasharray: "3 3" }} />
+                          <Line type="monotone" dataKey="intensity" stroke="#22d3ee" dot={false} strokeWidth={2} />
+                          {peaks.map((peak, idx) => (
+                            <ReferenceLine
+                              key={`peak-${idx}`}
+                              x={peak.two_theta}
+                              stroke="#0ea5e9"
+                              strokeWidth={1}
+                              strokeDasharray="2 2"
+                            />
+                          ))}
+                          <Scatter data={xrdChartData} fill="#0f766e" />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="cryst-xrd__list">
+                      {peaks.slice(0, 25).map((peak, index) => (
+                        <div key={index} className="cryst-xrd__row">
+                          <div className="badge">{peak.hkl.join(" ") || "hkl"}</div>
+                          <div>
+                            <div className="cryst-xrd__title">{peak.two_theta.toFixed(2)}° 2θ</div>
+                            <div className="cryst-xrd__meta">d = {peak.d_spacing.toFixed(3)} Å · I = {peak.intensity.toFixed(1)}</div>
+                          </div>
+                        </div>
                       ))}
                     </div>
-                    <div className="cryst-panel__actions">
-                      <button className="btn" type="button" onClick={handleEdit}>
-                        Apply edits
-                      </button>
-                      <button className="btn btn--subtle" type="button" onClick={downloadCif}>
-                        Download CIF
-                      </button>
+                  </div>
+                ) : (
+                  <p className="muted">No peaks yet. Compute after loading a structure.</p>
+                )}
+              </>
+            )}
+
+            {activeTab === "tem" && (
+              <>
+                <header className="cryst-panel__header">
+                  <div>
+                    <p className="eyebrow">TEM</p>
+                    <h2>SAED pattern for a zone axis</h2>
+                  </div>
+                </header>
+                <div className="cryst-grid">
+                  {["h", "k", "l"].map((label, idx) => (
+                    <label key={label} className="cryst-label">
+                      {label}
+                      <input
+                        type="number"
+                        value={zoneAxis[idx]}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setZoneAxis((axis) => {
+                            const next = [...axis] as [number, number, number];
+                            next[idx] = value;
+                            return next;
+                          });
+                        }}
+                      />
+                    </label>
+                  ))}
+                  <label className="cryst-label">
+                    Voltage (kV)
+                    <input type="number" value={voltage} onChange={(e) => setVoltage(Number(e.target.value))} />
+                  </label>
+                  <label className="cryst-label">
+                    Camera length (mm)
+                    <input type="number" value={cameraLength} onChange={(e) => setCameraLength(Number(e.target.value))} />
+                  </label>
+                  <label className="cryst-label">
+                    Max index
+                    <input type="number" value={maxIndex} onChange={(e) => setMaxIndex(Number(e.target.value))} />
+                  </label>
+                  <label className="cryst-label">
+                    g max (Å⁻¹)
+                    <input type="number" step="0.1" value={gMax} onChange={(e) => setGMax(Number(e.target.value))} />
+                  </label>
+                  <label className="cryst-label">
+                    Rotate (°)
+                    <input type="number" value={rotation} onChange={(e) => setRotation(Number(e.target.value))} />
+                  </label>
+                </div>
+                <div className="cryst-panel__actions">
+                  <button className="btn" type="button" disabled={!structure} onClick={handleSaed}>
+                    Simulate SAED
+                  </button>
+                </div>
+                {saedPattern ? (
+                  <>
+                    <div className="cryst-saed">
+                      <ResponsiveContainer width="100%" height={320}>
+                        <ScatterChart margin={{ top: 10, left: 10, right: 10, bottom: 20 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            type="number"
+                            dataKey="x"
+                            name="X"
+                            tick={{ fontSize: 12 }}
+                            domain={[-(saedPattern.range || 1), saedPattern.range || 1]}
+                          />
+                          <YAxis
+                            type="number"
+                            dataKey="y"
+                            name="Y"
+                            tick={{ fontSize: 12 }}
+                            domain={[-(saedPattern.range || 1), saedPattern.range || 1]}
+                          />
+                          <Tooltip content={<SaedTooltip />} />
+                          <Scatter data={saedPattern.spots.map((spot) => ({ ...spot, size: 6 + 70 * spot.intensity }))} fill="#2563eb" />
+                        </ScatterChart>
+                      </ResponsiveContainer>
                     </div>
-                    <div className="cryst-meta">
-                      <div>
-                        <p className="eyebrow">Formula</p>
-                        <p className="cryst-meta__value">{structure.formula}</p>
-                      </div>
-                      <div>
-                        <p className="eyebrow">Sites</p>
-                        <p className="cryst-meta__value">{structure.num_sites}</p>
-                      </div>
-                      <div>
-                        <p className="eyebrow">Crystal system</p>
-                        <p className="cryst-meta__value">{structure.crystal_system || (structure.is_hexagonal ? "hexagonal" : "unknown")}</p>
-                      </div>
+                    <div className="cryst-list">
+                      <div className="cryst-list__header">Top reflections ({saedPattern.spots.length})</div>
+                      {saedPattern.spots.slice(0, 20).map((spot, idx) => (
+                        <div key={idx} className="cryst-list__row">
+                          <div className="badge">{spot.hkl.join(" ")}</div>
+                          <div className="cryst-list__meta">
+                            g = {spot.g_magnitude.toFixed(3)} Å⁻¹ · d = {spot.d_spacing.toFixed(3)} Å · I = {spot.intensity.toFixed(3)}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </>
                 ) : (
-                  <p className="muted">No structure loaded.</p>
+                  <p className="muted">Run a simulation to view spot positions and metadata.</p>
                 )}
-              </section>
-            </div>
+              </>
+            )}
 
-            <div className="cryst-column">
-              <div className="cryst-tabs" role="tablist" aria-label="Crystallographic tools">
-                {[
-                  { key: "xrd", label: "XRD peaks" },
-                  { key: "tem", label: "TEM / SAED" },
-                  { key: "calculator", label: "Calculator" },
-                ].map((tab) => (
-                  <button
-                    key={tab.key}
-                    role="tab"
-                    className={activeTab === tab.key ? "cryst-tab active" : "cryst-tab"}
-                    aria-selected={activeTab === tab.key}
-                    onClick={() => setActiveTab(tab.key as TabKey)}
-                    type="button"
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="cryst-panel">
-                {activeTab === "xrd" && (
-                  <>
-                    <header className="cryst-panel__header">
-                      <div>
-                        <p className="eyebrow">Powder XRD</p>
-                        <h2>Simulate diffraction peaks</h2>
-                      </div>
-                    </header>
-                    <div className="cryst-grid">
-                      <label className="cryst-label">
-                        Radiation
-                        <input value={radiation} onChange={(e) => setRadiation(e.target.value)} />
-                      </label>
-                      <label className="cryst-label">
-                        2θ min
-                        <input type="number" value={thetaMin} onChange={(e) => setThetaMin(Number(e.target.value))} />
-                      </label>
-                      <label className="cryst-label">
-                        2θ max
-                        <input type="number" value={thetaMax} onChange={(e) => setThetaMax(Number(e.target.value))} />
-                      </label>
-                      <label className="cryst-label">
-                        Step
-                        <input type="number" value={thetaStep} step="0.01" onChange={(e) => setThetaStep(Number(e.target.value))} />
-                      </label>
-                    </div>
-                    <div className="cryst-panel__actions">
-                      <button className="btn" type="button" disabled={!structure} onClick={handleXrd}>
-                        Compute XRD
-                      </button>
-                    </div>
-                    {peaks.length ? (
-                      <div className="cryst-xrd">
-                        <div className="cryst-xrd__chart">
-                          <ResponsiveContainer width="100%" height={220}>
-                            <ScatterChart margin={{ top: 10, bottom: 20, left: 10, right: 10 }}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="two_theta" name="2θ" unit="°" type="number" />
-                              <YAxis dataKey="intensity" name="I" />
-                              <Tooltip cursor={{ strokeDasharray: "3 3" }} />
-                              <Scatter data={xrdChartData} fill="#0f766e" />
-                            </ScatterChart>
-                          </ResponsiveContainer>
-                        </div>
-                        <div className="cryst-xrd__list">
-                          {peaks.slice(0, 25).map((peak, index) => (
-                            <div key={index} className="cryst-xrd__row">
-                              <div className="badge">{peak.hkl.join(" ") || "hkl"}</div>
-                              <div>
-                                <div className="cryst-xrd__title">{peak.two_theta.toFixed(2)}° 2θ</div>
-                                <div className="cryst-xrd__meta">d = {peak.d_spacing.toFixed(3)} Å · I = {peak.intensity.toFixed(1)}</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="muted">No peaks yet. Compute after loading a structure.</p>
-                    )}
-                  </>
-                )}
-
-                {activeTab === "tem" && (
-                  <>
-                    <header className="cryst-panel__header">
-                      <div>
-                        <p className="eyebrow">TEM</p>
-                        <h2>SAED pattern for a zone axis</h2>
-                      </div>
-                    </header>
-                    <div className="cryst-grid">
-                      {["h", "k", "l"].map((label, idx) => (
-                        <label key={label} className="cryst-label">
-                          {label}
-                          <input
-                            type="number"
-                            value={zoneAxis[idx]}
-                            onChange={(e) => {
-                              const value = Number(e.target.value);
-                              setZoneAxis((axis) => {
-                                const next = [...axis] as [number, number, number];
-                                next[idx] = value;
-                                return next;
-                              });
-                            }}
-                          />
-                        </label>
-                      ))}
-                      <label className="cryst-label">
-                        Voltage (kV)
-                        <input type="number" value={voltage} onChange={(e) => setVoltage(Number(e.target.value))} />
-                      </label>
-                      <label className="cryst-label">
-                        Camera length (mm)
-                        <input type="number" value={cameraLength} onChange={(e) => setCameraLength(Number(e.target.value))} />
-                      </label>
-                      <label className="cryst-label">
-                        Max index
-                        <input type="number" value={maxIndex} onChange={(e) => setMaxIndex(Number(e.target.value))} />
-                      </label>
-                      <label className="cryst-label">
-                        g max (Å⁻¹)
-                        <input type="number" step="0.1" value={gMax} onChange={(e) => setGMax(Number(e.target.value))} />
-                      </label>
-                      <label className="cryst-label">
-                        Rotate (°)
-                        <input type="number" value={rotation} onChange={(e) => setRotation(Number(e.target.value))} />
-                      </label>
-                    </div>
-                    <div className="cryst-panel__actions">
-                      <button className="btn" type="button" disabled={!structure} onClick={handleSaed}>
-                        Simulate SAED
-                      </button>
-                    </div>
-                    {saedPattern ? (
-                      <>
-                        <div className="cryst-saed">
-                          <ResponsiveContainer width="100%" height={320}>
-                            <ScatterChart margin={{ top: 10, left: 10, right: 10, bottom: 20 }}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis type="number" dataKey="x" name="X" tick={{ fontSize: 12 }} />
-                              <YAxis type="number" dataKey="y" name="Y" tick={{ fontSize: 12 }} />
-                              <Tooltip content={<SaedTooltip />} />
-                              <Scatter data={saedPattern.spots.map((spot) => ({ ...spot, size: 8 + 60 * spot.intensity }))} fill="#2563eb" />
-                            </ScatterChart>
-                          </ResponsiveContainer>
-                        </div>
-                        <div className="cryst-list">
-                          <div className="cryst-list__header">Top reflections ({saedPattern.spots.length})</div>
-                          {saedPattern.spots.slice(0, 20).map((spot, idx) => (
-                            <div key={idx} className="cryst-list__row">
-                              <div className="badge">{spot.hkl.join(" ")}</div>
-                              <div className="cryst-list__meta">
-                                g = {spot.g_magnitude.toFixed(3)} Å⁻¹ · d = {spot.d_spacing.toFixed(3)} Å · I = {spot.intensity.toFixed(3)}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    ) : (
-                      <p className="muted">Run a simulation to view spot positions and metadata.</p>
-                    )}
-                  </>
-                )}
-
-                {activeTab === "calculator" && (
-                  <>
-                    <header className="cryst-panel__header">
-                      <div>
-                        <p className="eyebrow">Calculator</p>
-                        <h2>Angles & symmetry equivalents</h2>
-                        {isHexagonal ? <p className="muted">Hexagonal detected — Miller–Bravais helpers enabled.</p> : null}
-                      </div>
-                    </header>
-                    <div className="cryst-grid">
-                      <label className="cryst-label">
-                        Direction A [uvw]
-                        <div className="cryst-inline-inputs">
-                          {["u", "v", "w"].map((label, idx) => (
-                            <input
-                              key={label}
-                              type="number"
-                              value={directionA[idx]}
-                              onChange={(e) => {
-                                const value = Number(e.target.value);
-                                setDirectionA((vec) => {
-                                  const next = [...vec] as [number, number, number];
-                                  next[idx] = value;
-                                  return next;
-                                });
-                              }}
-                              aria-label={`Direction A ${label}`}
-                            />
-                          ))}
-                        </div>
-                        {isHexagonal ? renderComputedIndex("t = -(u+v)", -(directionA[0] + directionA[1])) : null}
-                      </label>
-                      <label className="cryst-label">
-                        Direction B [uvw]
-                        <div className="cryst-inline-inputs">
-                          {["u", "v", "w"].map((label, idx) => (
-                            <input
-                              key={label}
-                              type="number"
-                              value={directionB[idx]}
-                              onChange={(e) => {
-                                const value = Number(e.target.value);
-                                setDirectionB((vec) => {
-                                  const next = [...vec] as [number, number, number];
-                                  next[idx] = value;
-                                  return next;
-                                });
-                              }}
-                              aria-label={`Direction B ${label}`}
-                            />
-                          ))}
-                        </div>
-                        {isHexagonal ? renderComputedIndex("t = -(u+v)", -(directionB[0] + directionB[1])) : null}
-                      </label>
-                      <label className="cryst-label">
-                        Plane (hkl)
-                        <div className="cryst-inline-inputs">
-                          {["h", "k", "l"].map((label, idx) => (
-                            <input
-                              key={label}
-                              type="number"
-                              value={plane[idx]}
-                              onChange={(e) => {
-                                const value = Number(e.target.value);
-                                setPlane((vec) => {
-                                  const next = [...vec] as [number, number, number];
-                                  next[idx] = value;
-                                  return next;
-                                });
-                              }}
-                              aria-label={`Plane ${label}`}
-                            />
-                          ))}
-                        </div>
-                        {isHexagonal ? renderComputedIndex("i = -(h+k)", -(plane[0] + plane[1])) : null}
-                      </label>
-                      <label className="cryst-checkbox">
+            {activeTab === "calculator" && (
+              <>
+                <header className="cryst-panel__header">
+                  <div>
+                    <p className="eyebrow">Calculator</p>
+                    <h2>Angles & symmetry equivalents</h2>
+                    {isHexagonal ? <p className="muted">Hexagonal detected — Miller–Bravais helpers enabled.</p> : null}
+                  </div>
+                </header>
+                <div className="cryst-grid">
+                  <label className="cryst-label">
+                    Direction A [uvw]
+                    <div className="cryst-inline-inputs">
+                      {["u", "v", "w"].map((label, idx) => (
                         <input
-                          type="checkbox"
-                          checked={includeEquivalents}
-                          onChange={(e) => setIncludeEquivalents(e.target.checked)}
+                          key={label}
+                          type="number"
+                          value={directionA[idx]}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            setDirectionA((vec) => {
+                              const next = [...vec] as [number, number, number];
+                              next[idx] = value;
+                              return next;
+                            });
+                          }}
+                          aria-label={`Direction A ${label}`}
                         />
-                        Include symmetry equivalents
-                      </label>
+                      ))}
                     </div>
-                    <div className="cryst-panel__actions">
-                      <button className="btn" type="button" disabled={!structure} onClick={handleCalculator}>
-                        Compute angles
-                      </button>
+                    {isHexagonal ? renderComputedIndex("t = -(u+v)", -(directionA[0] + directionA[1])) : null}
+                  </label>
+                  <label className="cryst-label">
+                    Direction B [uvw]
+                    <div className="cryst-inline-inputs">
+                      {["u", "v", "w"].map((label, idx) => (
+                        <input
+                          key={label}
+                          type="number"
+                          value={directionB[idx]}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            setDirectionB((vec) => {
+                              const next = [...vec] as [number, number, number];
+                              next[idx] = value;
+                              return next;
+                            });
+                          }}
+                          aria-label={`Direction B ${label}`}
+                        />
+                      ))}
                     </div>
-                    {calculator ? (
-                      <div className="cryst-calculator">
-                        <div className="cryst-calculator__result">
-                          <p className="eyebrow">Angle between directions</p>
-                          <p className="cryst-meta__value">
-                            {calculator.direction_angle_deg !== null ? `${calculator.direction_angle_deg.toFixed(2)}°` : "—"}
-                          </p>
+                    {isHexagonal ? renderComputedIndex("t = -(u+v)", -(directionB[0] + directionB[1])) : null}
+                  </label>
+                  <label className="cryst-label">
+                    Plane (hkl)
+                    <div className="cryst-inline-inputs">
+                      {["h", "k", "l"].map((label, idx) => (
+                        <input
+                          key={label}
+                          type="number"
+                          value={plane[idx]}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            setPlane((vec) => {
+                              const next = [...vec] as [number, number, number];
+                              next[idx] = value;
+                              return next;
+                            });
+                          }}
+                          aria-label={`Plane ${label}`}
+                        />
+                      ))}
+                    </div>
+                    {isHexagonal ? renderComputedIndex("i = -(h+k)", -(plane[0] + plane[1])) : null}
+                  </label>
+                  <label className="cryst-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={includeEquivalents}
+                      onChange={(e) => setIncludeEquivalents(e.target.checked)}
+                    />
+                    Include symmetry equivalents
+                  </label>
+                </div>
+                <div className="cryst-panel__actions">
+                  <button className="btn" type="button" disabled={!structure} onClick={handleCalculator}>
+                    Compute angles
+                  </button>
+                </div>
+                {calculator ? (
+                  <div className="cryst-calculator">
+                    <div className="cryst-calculator__result">
+                      <p className="eyebrow">Angle between directions</p>
+                      <p className="cryst-meta__value">
+                        {calculator.direction_angle_deg !== null ? `${calculator.direction_angle_deg.toFixed(2)}°` : "—"}
+                      </p>
+                    </div>
+                    <div className="cryst-calculator__result">
+                      <p className="eyebrow">Plane ∠ Direction A</p>
+                      <p className="cryst-meta__value">
+                        {calculator.plane_vector_angle_deg !== null ? `${calculator.plane_vector_angle_deg.toFixed(2)}°` : "—"}
+                      </p>
+                    </div>
+                    <div className="cryst-list">
+                      <div className="cryst-list__header">Equivalent directions</div>
+                      {(equivalents?.direction.three_index || []).slice(0, 12).map((hkl, idx) => (
+                        <div key={idx} className="cryst-list__row">
+                          <div className="badge">{hkl.join(" ")}</div>
+                          {isHexagonal && equivalents?.direction.four_index?.[idx] ? (
+                            <div className="cryst-list__meta">[uvtw] {equivalents.direction.four_index[idx].map((v) => v.toFixed(2)).join(" ")}</div>
+                          ) : null}
                         </div>
-                        <div className="cryst-calculator__result">
-                          <p className="eyebrow">Plane ∠ Direction A</p>
-                          <p className="cryst-meta__value">
-                            {calculator.plane_vector_angle_deg !== null ? `${calculator.plane_vector_angle_deg.toFixed(2)}°` : "—"}
-                          </p>
+                      ))}
+                    </div>
+                    <div className="cryst-list">
+                      <div className="cryst-list__header">Equivalent planes</div>
+                      {(equivalents?.plane.three_index || []).slice(0, 12).map((hkl, idx) => (
+                        <div key={idx} className="cryst-list__row">
+                          <div className="badge">{hkl.join(" ")}</div>
+                          {isHexagonal && equivalents?.plane.four_index?.[idx] ? (
+                            <div className="cryst-list__meta">(hkli) {equivalents.plane.four_index[idx].map((v) => v.toFixed(2)).join(" ")}</div>
+                          ) : null}
                         </div>
-                        <div className="cryst-list">
-                          <div className="cryst-list__header">Equivalent directions</div>
-                          {(equivalents?.direction.three_index || []).slice(0, 12).map((hkl, idx) => (
-                            <div key={idx} className="cryst-list__row">
-                              <div className="badge">{hkl.join(" ")}</div>
-                              {isHexagonal && equivalents?.direction.four_index?.[idx] ? (
-                                <div className="cryst-list__meta">[uvtw] {equivalents.direction.four_index[idx].map((v) => v.toFixed(2)).join(" ")}</div>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                        <div className="cryst-list">
-                          <div className="cryst-list__header">Equivalent planes</div>
-                          {(equivalents?.plane.three_index || []).slice(0, 12).map((hkl, idx) => (
-                            <div key={idx} className="cryst-list__row">
-                              <div className="badge">{hkl.join(" ")}</div>
-                              {isHexagonal && equivalents?.plane.four_index?.[idx] ? (
-                                <div className="cryst-list__meta">(hkli) {equivalents.plane.four_index[idx].map((v) => v.toFixed(2)).join(" ")}</div>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="muted">Enter directions and a plane to compute angles and symmetry equivalents.</p>
-                    )}
-                  </>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="muted">Enter directions and a plane to compute angles and symmetry equivalents.</p>
                 )}
-              </div>
-            </div>
+              </>
+            )}
           </div>
-        }
-      />
+        </main>
+      </div>
       {status.status ? <StatusMessage {...status.status} /> : null}
     </section>
   );

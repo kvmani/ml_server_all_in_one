@@ -76,7 +76,7 @@ def xrd() -> Response:
     radiation = data.get("radiation") or "CuKa"
     two_theta = data.get("two_theta") or {}
     try:
-        peaks = xrd_core.compute_xrd_peaks(
+        pattern = xrd_core.compute_xrd_peaks(
             structure,
             radiation=radiation,
             tth_min=float(two_theta.get("min", 10.0)),
@@ -86,7 +86,7 @@ def xrd() -> Response:
     except Exception as exc:  # pragma: no cover - defensive
         return fail(ValidationAppError(message="XRD calculation failed", code="crystallography.xrd_error", details={"error": str(exc)}))
 
-    return ok({"peaks": peaks})
+    return ok(pattern)
 
 
 @bp.post("/tem_saed")

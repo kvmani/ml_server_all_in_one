@@ -40,7 +40,11 @@ describe("CrystallographicToolsPage", () => {
         );
       }
       if (url.includes("/xrd")) {
-        return Promise.resolve(apiResponse({ peaks: [{ two_theta: 30, intensity: 100, d_spacing: 2.0, hkl: [1, 1, 1] }] }));
+        return Promise.resolve(apiResponse({
+          peaks: [{ two_theta: 30, intensity: 100, intensity_normalized: 100, d_spacing: 2.0, hkl: [1, 1, 1] }],
+          curve: [{ two_theta: 30, intensity: 100 }],
+          range: { min: 20, max: 80 },
+        }));
       }
       if (url.includes("/tem_saed")) {
         return Promise.resolve(

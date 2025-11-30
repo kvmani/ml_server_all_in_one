@@ -62,6 +62,7 @@ def test_xrd_endpoint():
     assert resp.status_code == 200
     payload = resp.get_json()["data"]
     assert payload["peaks"]
+    assert payload["curve"]
 
 
 def test_tem_saed_endpoint():
