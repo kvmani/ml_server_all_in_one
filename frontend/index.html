@@ -56,6 +56,14 @@
               tags: ["ml", "csv", "analysis"],
               docs: "/help/tabular_ml",
             },
+            {
+              blueprint: "crystallographic_tools",
+              title: "Crystallographic tools",
+              summary: "Load CIFs once to drive XRD peaks, TEM/SAED, and crystallographic calculators.",
+              category: "Microstructural Analysis",
+              tags: ["cif", "xrd", "tem", "crystallography"],
+              docs: "/help/crystallographic_tools",
+            },
           ],
           props: {},
         };
@@ -154,6 +162,14 @@
               helpHref: "/help/tabular_ml",
               upload: { max_mb: 3 },
             },
+          },
+          "/tools/crystallographic_tools": {
+            page: "crystallographic_tools",
+            props: { helpHref: "/help/crystallographic_tools" },
+          },
+          "/crystallographic_tools": {
+            page: "crystallographic_tools",
+            props: { helpHref: "/help/crystallographic_tools" },
           },
         };
 

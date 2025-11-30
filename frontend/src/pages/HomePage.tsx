@@ -20,6 +20,7 @@ const ICON_MAP: Record<string, string> = {
   pdf_stitch: pdfToolsIcon,
   tabular_ml: tabularIcon,
   unit_converter: unitConverterIcon,
+  crystallographic_tools: pdfToolsIcon,
 };
 
 function normaliseCategory(category?: string | null) {

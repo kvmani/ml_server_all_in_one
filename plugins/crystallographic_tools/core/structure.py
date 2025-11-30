@@ -8,6 +8,37 @@ from common.validation import ValidationError
 from pymatgen.core import Lattice, Structure
 from pymatgen.io.cif import CifParser
 
+_ANGLE_TOL = 1e-2
+_LENGTH_TOL = 1e-2
+
+
+def _is_close(val: float, target: float, tol: float) -> bool:
+    return abs(val - target) <= tol
+
+
+def _infer_crystal_system(lattice: Lattice) -> str:
+    """Lightweight crystal system inference that does not rely on spglib."""
+
+    a, b, c = lattice.a, lattice.b, lattice.c
+    alpha, beta, gamma = lattice.alpha, lattice.beta, lattice.gamma
+
+    ab_equal = _is_close(a, b, _LENGTH_TOL * max(a, b, 1.0))
+    bc_equal = _is_close(b, c, _LENGTH_TOL * max(b, c, 1.0))
+
+    if ab_equal and bc_equal and all(
+        _is_close(angle, 90.0, _ANGLE_TOL) for angle in (alpha, beta, gamma)
+    ):
+        return "cubic"
+    if ab_equal and all(_is_close(angle, 90.0, _ANGLE_TOL) for angle in (alpha, beta)) and _is_close(gamma, 120.0, _ANGLE_TOL):
+        return "hexagonal"
+    if ab_equal and all(_is_close(angle, 90.0, _ANGLE_TOL) for angle in (alpha, beta, gamma)):
+        return "tetragonal"
+    if all(_is_close(angle, 90.0, _ANGLE_TOL) for angle in (alpha, beta, gamma)):
+        return "orthorhombic"
+    if _is_close(alpha, 90.0, _ANGLE_TOL) and _is_close(beta, 90.0, _ANGLE_TOL):
+        return "monoclinic"
+    return "triclinic"
+
 
 def parse_cif_bytes(data: bytes) -> Structure:
     """Parse CIF bytes into a pymatgen Structure."""
@@ -38,6 +69,12 @@ def structure_to_payload(structure: Structure) -> dict:
     """Return a JSON-serialisable payload describing the structure."""
 
     lattice = structure.lattice
+    is_hexagonal = (
+        _is_close(lattice.a, lattice.b, _LENGTH_TOL * max(lattice.a, lattice.b, 1.0))
+        and _is_close(lattice.alpha, 90.0, _ANGLE_TOL)
+        and _is_close(lattice.beta, 90.0, _ANGLE_TOL)
+        and _is_close(lattice.gamma, 120.0, _ANGLE_TOL)
+    )
     sites = [
         {
             "species": str(site.specie),
@@ -58,6 +95,8 @@ def structure_to_payload(structure: Structure) -> dict:
         "cif": structure.to(fmt="cif"),
         "num_sites": len(structure.sites),
         "formula": structure.formula,
+        "is_hexagonal": is_hexagonal,
+        "crystal_system": _infer_crystal_system(lattice),
     }
 
 

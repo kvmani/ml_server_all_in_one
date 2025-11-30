@@ -186,6 +186,33 @@ const HELP_BUILDERS: Record<string, HelpBuilder> = {
       ],
     };
   },
+  crystallographic_tools: () => ({
+    category: "Microstructural analysis",
+    title: "Crystallographic tools guidance",
+    subtitle:
+      "Load one CIF and reuse it across XRD peaks, TEM/SAED simulations, and crystallographic calculators in a single workspace.",
+    sections: [
+      {
+        heading: "Quick start",
+        ordered: [
+          "Upload a CIF in the Load & edit panel; verify lattice parameters and the detected crystal system.",
+          "Adjust lattice constants if needed and click Apply edits, then download the updated CIF for later use.",
+          "Open the XRD tab, choose radiation and 2θ window, and compute peaks to view the chart and peak list.",
+          "Switch to TEM/SAED, set zone axis, voltage, and camera length, then simulate to inspect spot positions.",
+          "In the Calculator tab, enter directions and a plane; hexagonal systems expose the read-only i/t components automatically. Compute to see angles and symmetry equivalents.",
+        ],
+      },
+      {
+        heading: "Tips",
+        unordered: [
+          "A single CIF powers all tabs—no need to re-upload when switching between XRD, SAED, and calculators.",
+          "Keep zone indices modest (±3) for quick SAED previews; increase g max or max index for denser patterns.",
+          "Hexagonal inputs show computed i/t fields; only edit the u,v,w or h,k,l values.",
+          "All processing is in-memory; avoid extremely large CIFs or index ranges on constrained workstations.",
+        ],
+      },
+    ],
+  }),
   overview: ({ manifests, pluginSettings, siteDescription, currentTheme }) => {
     const directory: DirectoryEntry[] = manifests.map((manifest) => {
       const settings = pluginSettings[manifest.blueprint] || {};

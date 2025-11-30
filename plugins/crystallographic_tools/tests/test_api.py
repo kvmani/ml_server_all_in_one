@@ -1,5 +1,7 @@
-import json
 from io import BytesIO
+
+import pytest
+
 from app import create_app
 
 
@@ -60,3 +62,33 @@ def test_xrd_endpoint():
     assert resp.status_code == 200
     payload = resp.get_json()["data"]
     assert payload["peaks"]
+
+
+def test_tem_saed_endpoint():
+    client = _client()
+    resp = client.post(
+        "/api/crystallographic_tools/tem_saed",
+        json={"cif": SIMPLE_CIF.decode(), "zone_axis": [1, 0, 0], "max_index": 2},
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()["data"]
+    assert payload["spots"]
+    assert payload["calibration"]["camera_length_mm"] == 100.0
+
+
+def test_calculator_endpoint():
+    client = _client()
+    resp = client.post(
+        "/api/crystallographic_tools/calculator",
+        json={
+            "cif": SIMPLE_CIF.decode(),
+            "direction_a": [1, 0, 0],
+            "direction_b": [0, 1, 0],
+            "plane": [1, 0, 0],
+            "include_equivalents": True,
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()["data"]
+    assert payload["direction_angle_deg"] == pytest.approx(90.0)
+    assert payload["equivalents"]["direction"]["three_index"]
