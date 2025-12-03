@@ -39,6 +39,19 @@ describe("CrystallographicToolsPage", () => {
           }),
         );
       }
+      if (url.includes("/edit_cif")) {
+        return Promise.resolve(
+          apiResponse({
+            lattice: { a: 2.8665, b: 2.8665, c: 2.8665, alpha: 90, beta: 90, gamma: 90 },
+            sites: [],
+            cif: "fe",
+            num_sites: 2,
+            formula: "Fe2",
+            is_hexagonal: false,
+            crystal_system: "cubic",
+          }),
+        );
+      }
       if (url.includes("/xrd")) {
         return Promise.resolve(apiResponse({
           peaks: [{ two_theta: 30, intensity: 100, intensity_normalized: 100, d_spacing: 2.0, hkl: [1, 1, 1] }],
@@ -49,9 +62,41 @@ describe("CrystallographicToolsPage", () => {
       if (url.includes("/tem_saed")) {
         return Promise.resolve(
           apiResponse({
-            spots: [{ hkl: [1, 1, 0], x: 0.1, y: 0.2, intensity: 0.8, g_magnitude: 2.0, d_spacing: 2.5, two_theta: 5.0 }],
-            calibration: { wavelength_angstrom: 0.025, camera_length_mm: 100, zone_axis: [1, 0, 0], max_index: 3, g_max: 6 },
-            basis: { zone: [1, 0, 0], x: [0, 1, 0], y: [0, 0, 1] },
+            metadata: {
+              phase_name: "Si",
+              formula: "Si2",
+              spacegroup: "Fd-3m",
+              zone_axis: [1, 0, 0],
+              x_axis_hkl: null,
+              inplane_rotation_deg: 0,
+              voltage_kv: 200,
+              lambda_angstrom: 0.025,
+              camera_length_cm: 10,
+              laue_zone: 0,
+              min_d_angstrom: 0.5,
+              max_index: 3,
+              intensity_min_relative: 0.01,
+            },
+            limits: { x_min: -1, x_max: 1, y_min: -1, y_max: 1, r_max: 1.2, i_max: 1 },
+            spots: [
+              {
+                hkl: [1, 1, 0],
+                zone: 0,
+                d_angstrom: 2.5,
+                s2: null,
+                intensity_raw: 120,
+                intensity_rel: 0.8,
+                x_cm: 0.1,
+                y_cm: 0.2,
+                x_rot_cm: 0.1,
+                y_rot_cm: 0.2,
+                x_norm: 0.2,
+                y_norm: 0.4,
+                r_cm: 0.2236,
+                two_theta_deg: 5.0,
+                label: "110",
+              },
+            ],
           }),
         );
       }
@@ -86,12 +131,28 @@ describe("CrystallographicToolsPage", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /TEM/i }));
     fireEvent.click(screen.getByRole("button", { name: /simulate saed/i }));
-    await waitFor(() => expect(screen.getByText(/g = 2\.000/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/d = 2\.500/)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("tab", { name: /Calculator/i }));
     fireEvent.click(screen.getByRole("button", { name: /compute angles/i }));
     await waitFor(() => expect(screen.getByText(/90\.00°/)).toBeInTheDocument());
     expect(screen.getByText(/45\.00°/)).toBeInTheDocument();
+  });
+
+  it("loads the Fe sample and pre-fills a [0 0 1] zone axis", async () => {
+    const { container } = renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /load fe sample/i }));
+
+    await waitFor(() => expect(screen.getByText("Fe2")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("tab", { name: /tem/i }));
+    const [zoneH] = screen.getAllByLabelText("h") as HTMLInputElement[];
+    const kInput = screen.getByLabelText("k") as HTMLInputElement;
+    const lInput = screen.getByLabelText("l") as HTMLInputElement;
+
+    expect(zoneH.value).toBe("0");
+    expect(kInput.value).toBe("0");
+    expect(lInput.value).toBe("1");
   });
 
   it("shows four-index helpers for hexagonal structures", async () => {
@@ -120,7 +181,7 @@ describe("CrystallographicToolsPage", () => {
     await waitFor(() => expect(screen.getByText("Mg")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("tab", { name: /Calculator/i }));
-    const computedField = screen.getByLabelText("t = -(u+v)") as HTMLInputElement;
+    const [computedField] = screen.getAllByLabelText("t = -(u+v)") as HTMLInputElement[];
     expect(computedField.value).toBe("-1.000");
   });
 });

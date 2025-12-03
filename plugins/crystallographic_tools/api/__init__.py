@@ -96,20 +96,10 @@ def tem_saed() -> Response:
     if isinstance(structure, Response):
         return structure
 
-    zone_axis = data.get("zone_axis")
-    if not isinstance(zone_axis, (list, tuple)):
-        return fail(ValidationAppError(message="Zone axis is required", code="crystallography.missing_zone"))
-
     try:
         pattern = tem_core.compute_saed_pattern(
             structure,
-            zone_axis=zone_axis,
-            voltage_kv=float(data.get("voltage_kv", 200.0)),
-            camera_length_mm=float(data.get("camera_length_mm", 100.0)),
-            max_index=int(data.get("max_index", 3)),
-            g_max=float(data.get("g_max", 6.0)),
-            zone_tolerance_deg=float(data.get("zone_tolerance_deg", 2.5)),
-            rotation_deg=float(data.get("rotation_deg", 0.0)),
+            config=tem_core.SaedConfig.from_payload(structure, data),
         )
     except (ValidationError, ValueError) as exc:
         return fail(ValidationAppError(message=str(exc), code="crystallography.tem_invalid"))

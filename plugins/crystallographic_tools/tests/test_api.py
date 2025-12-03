@@ -69,12 +69,19 @@ def test_tem_saed_endpoint():
     client = _client()
     resp = client.post(
         "/api/crystallographic_tools/tem_saed",
-        json={"cif": SIMPLE_CIF.decode(), "zone_axis": [1, 0, 0], "max_index": 2},
+        json={
+            "cif": SIMPLE_CIF.decode(),
+            "zone_axis": [1, 0, 0],
+            "max_index": 2,
+            "camera_length_cm": 12,
+            "intensity_min_relative": 1e-4,
+        },
     )
     assert resp.status_code == 200
     payload = resp.get_json()["data"]
     assert payload["spots"]
-    assert payload["calibration"]["camera_length_mm"] == 100.0
+    assert payload["metadata"]["camera_length_cm"] == 12.0
+    assert payload["limits"]["i_max"] <= 1.0
 
 
 def test_calculator_endpoint():

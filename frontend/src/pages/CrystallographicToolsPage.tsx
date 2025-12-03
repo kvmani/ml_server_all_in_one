@@ -16,6 +16,7 @@ import {
   type XrdPeak,
   type XrdCurvePoint,
 } from "../features/crystallographicTools/api";
+import feBccCif from "../features/crystallographicTools/samples/fe_bcc.cif?raw";
 import { downloadBlob } from "../utils/files";
 import "../styles/crystallography.css";
 
@@ -36,9 +37,9 @@ function SaedTooltip({ active, payload }: any) {
   return (
     <div className="cryst-tooltip">
       <div className="cryst-tooltip__title">({spot.hkl.join(" ")})</div>
-      <div>g = {spot.g_magnitude.toFixed(3)} Å⁻¹</div>
-      <div>d = {spot.d_spacing.toFixed(3)} Å</div>
-      <div>I = {spot.intensity.toFixed(3)}</div>
+      <div>d = {spot.d_angstrom.toFixed(3)} Å</div>
+      <div>2θ = {spot.two_theta_deg.toFixed(3)}°</div>
+      <div>I = {spot.intensity_rel.toFixed(3)}</div>
     </div>
   );
 }
@@ -59,11 +60,13 @@ export default function CrystallographicToolsPage() {
   const [thetaStep, setThetaStep] = useState(0.05);
 
   const [zoneAxis, setZoneAxis] = useState<[number, number, number]>([1, 0, 0]);
+  const [xAxis, setXAxis] = useState<[number, number, number] | null>(null);
   const [voltage, setVoltage] = useState(200);
-  const [cameraLength, setCameraLength] = useState(100);
+  const [cameraLengthCm, setCameraLengthCm] = useState(10);
   const [maxIndex, setMaxIndex] = useState(3);
-  const [gMax, setGMax] = useState(6);
-  const [rotation, setRotation] = useState(0);
+  const [minD, setMinD] = useState(0.5);
+  const [intensityThreshold, setIntensityThreshold] = useState(0.01);
+  const [inplaneRotation, setInplaneRotation] = useState(0);
 
   const [directionA, setDirectionA] = useState<[number, number, number]>([1, 0, 0]);
   const [directionB, setDirectionB] = useState<[number, number, number]>([0, 1, 0]);
@@ -94,6 +97,21 @@ export default function CrystallographicToolsPage() {
     },
     [status, withLoader],
   );
+
+  const handleLoadSample = useCallback(async () => {
+    try {
+      const payload = await withLoader(() => editCif({ cif: feBccCif }));
+      setStructure(payload);
+      setCifText(payload.cif);
+      setPeaks([]);
+      setSaedPattern(null);
+      setCalculator(null);
+      setZoneAxis([0, 0, 1]);
+      status.setStatus("Loaded Fe (bcc) sample", "success");
+    } catch (error) {
+      status.setStatus(error instanceof Error ? error.message : "Failed to load sample", "error");
+    }
+  }, [status, withLoader]);
 
   const handleEdit = useCallback(async () => {
     if (!structure) return;
@@ -134,23 +152,26 @@ export default function CrystallographicToolsPage() {
   const handleSaed = useCallback(async () => {
     if (!structure) return;
     try {
+      const xAxisPayload = xAxis && xAxis.some((value) => value !== 0) ? xAxis : undefined;
       const pattern = await withLoader(() =>
         temSaed({
           cif: cifText || structure.cif,
           zone_axis: zoneAxis,
           voltage_kv: voltage,
-          camera_length_mm: cameraLength,
+          camera_length_cm: cameraLengthCm,
           max_index: maxIndex,
-          g_max: gMax,
-          rotation_deg: rotation,
+          min_d_angstrom: minD,
+          intensity_min_relative: intensityThreshold,
+          x_axis_hkl: xAxisPayload,
+          inplane_rotation_deg: inplaneRotation,
         }),
       );
-      setSaedPattern(pattern);
-      status.setStatus("SAED pattern simulated", "success");
-    } catch (error) {
-      status.setStatus(error instanceof Error ? error.message : "SAED calculation failed", "error");
-    }
-  }, [structure, cifText, zoneAxis, voltage, cameraLength, maxIndex, gMax, rotation, status, withLoader]);
+          setSaedPattern(pattern);
+          status.setStatus("SAED pattern simulated", "success");
+        } catch (error) {
+          status.setStatus(error instanceof Error ? error.message : "SAED calculation failed", "error");
+        }
+      }, [structure, cifText, zoneAxis, voltage, cameraLengthCm, maxIndex, minD, intensityThreshold, xAxis, inplaneRotation, status, withLoader]);
 
   const handleCalculator = useCallback(async () => {
     if (!structure) return;
@@ -243,6 +264,9 @@ export default function CrystallographicToolsPage() {
               <div className="cryst-actions">
                 <button className="btn" type="button" onClick={() => fileInput.current?.click()}>
                   Upload CIF
+                </button>
+                <button className="btn btn--subtle" type="button" onClick={handleLoadSample}>
+                  Load Fe sample
                 </button>
                 <input
                   ref={fileInput}
@@ -428,20 +452,51 @@ export default function CrystallographicToolsPage() {
                     <input type="number" value={voltage} onChange={(e) => setVoltage(Number(e.target.value))} />
                   </label>
                   <label className="cryst-label">
-                    Camera length (mm)
-                    <input type="number" value={cameraLength} onChange={(e) => setCameraLength(Number(e.target.value))} />
+                    Camera length (cm)
+                    <input type="number" step="0.1" value={cameraLengthCm} onChange={(e) => setCameraLengthCm(Number(e.target.value))} />
                   </label>
                   <label className="cryst-label">
                     Max index
                     <input type="number" value={maxIndex} onChange={(e) => setMaxIndex(Number(e.target.value))} />
                   </label>
                   <label className="cryst-label">
-                    g max (Å⁻¹)
-                    <input type="number" step="0.1" value={gMax} onChange={(e) => setGMax(Number(e.target.value))} />
+                    Min d-spacing (Å)
+                    <input type="number" step="0.05" value={minD} onChange={(e) => setMinD(Number(e.target.value))} />
                   </label>
                   <label className="cryst-label">
-                    Rotate (°)
-                    <input type="number" value={rotation} onChange={(e) => setRotation(Number(e.target.value))} />
+                    Intensity cutoff
+                    <input
+                      type="number"
+                      step="0.001"
+                      min={0}
+                      value={intensityThreshold}
+                      onChange={(e) => setIntensityThreshold(Number(e.target.value))}
+                    />
+                  </label>
+                  <label className="cryst-label">
+                    Align x-axis to hkl (optional)
+                    <div className="cryst-inline-inputs">
+                      {["h", "k", "l"].map((label, idx) => (
+                        <input
+                          key={`x-axis-${label}`}
+                          type="number"
+                          value={xAxis ? xAxis[idx] : ""}
+                          placeholder={xAxis ? undefined : "0"}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            setXAxis((axis) => {
+                              const next = axis ? [...axis] as [number, number, number] : [0, 0, 0];
+                              next[idx] = value;
+                              return next;
+                            });
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </label>
+                  <label className="cryst-label">
+                    In-plane rotation (°)
+                    <input type="number" value={inplaneRotation} onChange={(e) => setInplaneRotation(Number(e.target.value))} />
                   </label>
                 </div>
                 <div className="cryst-panel__actions">
@@ -455,22 +510,13 @@ export default function CrystallographicToolsPage() {
                       <ResponsiveContainer width="100%" height={320}>
                         <ScatterChart margin={{ top: 10, left: 10, right: 10, bottom: 20 }}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis
-                            type="number"
-                            dataKey="x"
-                            name="X"
-                            tick={{ fontSize: 12 }}
-                            domain={[-(saedPattern.range || 1), saedPattern.range || 1]}
-                          />
-                          <YAxis
-                            type="number"
-                            dataKey="y"
-                            name="Y"
-                            tick={{ fontSize: 12 }}
-                            domain={[-(saedPattern.range || 1), saedPattern.range || 1]}
-                          />
+                          <XAxis type="number" dataKey="x_norm" name="X" tick={{ fontSize: 12 }} domain={[-1.05, 1.05]} />
+                          <YAxis type="number" dataKey="y_norm" name="Y" tick={{ fontSize: 12 }} domain={[-1.05, 1.05]} />
                           <Tooltip content={<SaedTooltip />} />
-                          <Scatter data={saedPattern.spots.map((spot) => ({ ...spot, size: 6 + 70 * spot.intensity }))} fill="#2563eb" />
+                          <Scatter
+                            data={saedPattern.spots.map((spot) => ({ ...spot, size: 6 + 80 * spot.intensity_rel }))}
+                            fill="#2563eb"
+                          />
                         </ScatterChart>
                       </ResponsiveContainer>
                     </div>
@@ -480,7 +526,7 @@ export default function CrystallographicToolsPage() {
                         <div key={idx} className="cryst-list__row">
                           <div className="badge">{spot.hkl.join(" ")}</div>
                           <div className="cryst-list__meta">
-                            g = {spot.g_magnitude.toFixed(3)} Å⁻¹ · d = {spot.d_spacing.toFixed(3)} Å · I = {spot.intensity.toFixed(3)}
+                            d = {spot.d_angstrom.toFixed(3)} Å · 2θ = {spot.two_theta_deg.toFixed(2)}° · I = {spot.intensity_rel.toFixed(3)}
                           </div>
                         </div>
                       ))}
