@@ -73,15 +73,15 @@ def xrd() -> Response:
     if isinstance(structure, Response):
         return structure
 
-    radiation = data.get("radiation") or "CuKa"
-    two_theta = data.get("two_theta") or {}
     try:
-        pattern = xrd_core.compute_xrd_peaks(
+        instrument = xrd_core.XrdInstrumentConfig.from_payload(data.get("instrument") or {"radiation": data.get("radiation")})
+        range_config = xrd_core.XrdRangeConfig.from_payload(data.get("two_theta"))
+        profile_config = xrd_core.PeakProfile.from_payload(data.get("profile"))
+        pattern = xrd_core.compute_xrd_pattern(
             structure,
-            radiation=radiation,
-            tth_min=float(two_theta.get("min", 10.0)),
-            tth_max=float(two_theta.get("max", 80.0)),
-            tth_step=float(two_theta.get("step", 0.02)),
+            instrument_config=instrument,
+            range_config=range_config,
+            profile_config=profile_config,
         )
     except Exception as exc:  # pragma: no cover - defensive
         return fail(ValidationAppError(message="XRD calculation failed", code="crystallography.xrd_error", details={"error": str(exc)}))

@@ -13,3 +13,5 @@ def test_xrd_peaks(simple_cif_bytes):
     top_peak = max(peaks, key=lambda p: p["intensity"])
     assert 20 <= top_peak["two_theta"] <= 80
     assert "hkl" in top_peak
+    assert pattern["instrument"]["radiation"] == "CuKa"
+    assert pattern["summary"]["peak_count"] == len(peaks)

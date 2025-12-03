@@ -1,5 +1,18 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { CartesianGrid, ComposedChart, Line, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, Bar, ReferenceLine } from "recharts";
+import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ReferenceArea,
+  ReferenceLine,
+  ResponsiveContainer,
+  Scatter,
+  ScatterChart,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import crystallographyIcon from "../assets/pdf_tools_icon.png";
 import { StatusMessage } from "../components/StatusMessage";
 import { useLoading } from "../contexts/LoadingContext";
@@ -49,15 +62,30 @@ export default function CrystallographicToolsPage() {
   const [cifText, setCifText] = useState("");
   const [peaks, setPeaks] = useState<XrdPeak[]>([]);
   const [xrdCurve, setXrdCurve] = useState<XrdCurvePoint[]>([]);
-  const [xrdRange, setXrdRange] = useState<{ min: number; max: number }>({ min: 10, max: 80 });
+  const [xrdRange, setXrdRange] = useState<{ min: number; max: number; step?: number }>({ min: 10, max: 80 });
+  const [xrdProfile, setXrdProfile] = useState<{ u: number; v: number; w: number; model: string } | null>(null);
+  const [xrdInstrument, setXrdInstrument] = useState<{
+    radiation: string;
+    wavelength_angstrom: number | null;
+    geometry: string;
+    polarization_ratio: number | null;
+  } | null>(null);
+  const [xrdSummary, setXrdSummary] = useState<{ peak_count: number; max_intensity: number } | null>(null);
   const [saedPattern, setSaedPattern] = useState<SaedPattern | null>(null);
   const [calculator, setCalculator] = useState<CalculatorResult | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("xrd");
 
   const [radiation, setRadiation] = useState("CuKa");
+  const [geometry, setGeometry] = useState("bragg_brentano");
+  const [wavelengthAngstrom, setWavelengthAngstrom] = useState<number | "">(1.5406);
+  const [polarizationRatio, setPolarizationRatio] = useState(0.5);
   const [thetaMin, setThetaMin] = useState(20);
   const [thetaMax, setThetaMax] = useState(80);
-  const [thetaStep, setThetaStep] = useState(0.05);
+  const [thetaStep, setThetaStep] = useState(0.02);
+  const [profileU, setProfileU] = useState(0.02);
+  const [profileV, setProfileV] = useState(0.0);
+  const [profileW, setProfileW] = useState(0.1);
+  const [profileModel, setProfileModel] = useState("gaussian");
 
   const [zoneAxis, setZoneAxis] = useState<[number, number, number]>([1, 0, 0]);
   const [xAxis, setXAxis] = useState<[number, number, number] | null>(null);
@@ -88,6 +116,10 @@ export default function CrystallographicToolsPage() {
         setStructure(payload);
         setCifText(payload.cif);
         setPeaks([]);
+        setXrdCurve([]);
+        setXrdProfile(null);
+        setXrdInstrument(null);
+        setXrdSummary(null);
         setSaedPattern(null);
         setCalculator(null);
         status.setStatus(`Loaded ${payload.formula}`, "success");
@@ -104,6 +136,10 @@ export default function CrystallographicToolsPage() {
       setStructure(payload);
       setCifText(payload.cif);
       setPeaks([]);
+      setXrdCurve([]);
+      setXrdProfile(null);
+      setXrdInstrument(null);
+      setXrdSummary(null);
       setSaedPattern(null);
       setCalculator(null);
       setZoneAxis([0, 0, 1]);
@@ -133,21 +169,30 @@ export default function CrystallographicToolsPage() {
   const handleXrd = useCallback(async () => {
     if (!structure) return;
     try {
-      const { peaks, curve, range } = await withLoader(() =>
+      const pattern = await withLoader(() =>
         xrdPattern({
           cif: cifText || structure.cif,
-          radiation,
+          instrument: {
+            radiation,
+            wavelength_angstrom: wavelengthAngstrom === "" ? null : Number(wavelengthAngstrom),
+            geometry,
+            polarization_ratio: polarizationRatio,
+          },
           two_theta: { min: thetaMin, max: thetaMax, step: thetaStep },
+          profile: { u: profileU, v: profileV, w: profileW, profile: profileModel },
         }),
       );
-      setPeaks(peaks);
-      setXrdCurve(curve);
-      setXrdRange(range);
+      setPeaks(pattern.peaks);
+      setXrdCurve(pattern.curve);
+      setXrdRange(pattern.range);
+      setXrdProfile(pattern.profile);
+      setXrdInstrument(pattern.instrument);
+      setXrdSummary(pattern.summary);
       status.setStatus("XRD peaks computed", "success");
     } catch (error) {
       status.setStatus(error instanceof Error ? error.message : "XRD calculation failed", "error");
     }
-  }, [structure, cifText, radiation, thetaMin, thetaMax, thetaStep, status, withLoader]);
+  }, [structure, cifText, radiation, geometry, wavelengthAngstrom, polarizationRatio, thetaMin, thetaMax, thetaStep, profileU, profileV, profileW, profileModel, status, withLoader]);
 
   const handleSaed = useCallback(async () => {
     if (!structure) return;
@@ -344,31 +389,140 @@ export default function CrystallographicToolsPage() {
                   <div>
                     <p className="eyebrow">Powder XRD</p>
                     <h2>Simulate diffraction peaks</h2>
+                    <p className="muted">Instrument-aware peak table with Caglioti broadening.</p>
                   </div>
                 </header>
-                <div className="cryst-grid">
-                  <label className="cryst-label">
-                    Radiation
-                    <input value={radiation} onChange={(e) => setRadiation(e.target.value)} />
-                  </label>
-                  <label className="cryst-label">
-                    2θ min
-                    <input type="number" value={thetaMin} onChange={(e) => setThetaMin(Number(e.target.value))} />
-                  </label>
-                  <label className="cryst-label">
-                    2θ max
-                    <input type="number" value={thetaMax} onChange={(e) => setThetaMax(Number(e.target.value))} />
-                  </label>
-                  <label className="cryst-label">
-                    Step
-                    <input type="number" value={thetaStep} step="0.01" onChange={(e) => setThetaStep(Number(e.target.value))} />
-                  </label>
+                <div className="cryst-grid cryst-grid--two">
+                  <div className="cryst-subpanel">
+                    <div className="cryst-subpanel__header">
+                      <div>
+                        <p className="eyebrow">Instrument</p>
+                        <h3>Beam & geometry</h3>
+                      </div>
+                      <div className="cryst-chip-row">
+                        {[
+                          { label: "Cu Kα (1.5406 Å)", radiation: "CuKa", wavelength: 1.5406 },
+                          { label: "Mo Kα (0.7093 Å)", radiation: "MoKa", wavelength: 0.7093 },
+                          { label: "Fe Kα (1.9360 Å)", radiation: "FeKa", wavelength: 1.936 },
+                        ].map((preset) => (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            className="cryst-chip"
+                            onClick={() => {
+                              setRadiation(preset.radiation);
+                              setWavelengthAngstrom(preset.wavelength);
+                            }}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="cryst-grid">
+                      <label className="cryst-label">
+                        Radiation label
+                        <input value={radiation} onChange={(e) => setRadiation(e.target.value)} />
+                      </label>
+                      <label className="cryst-label">
+                        Wavelength (Å)
+                        <input
+                          type="number"
+                          step="0.0001"
+                          value={wavelengthAngstrom}
+                          onChange={(e) => setWavelengthAngstrom(e.target.value === "" ? "" : Number(e.target.value))}
+                        />
+                      </label>
+                      <label className="cryst-label">
+                        Geometry
+                        <select value={geometry} onChange={(e) => setGeometry(e.target.value)}>
+                          <option value="bragg_brentano">Bragg–Brentano</option>
+                          <option value="transmission">Transmission / Debye–Scherrer</option>
+                        </select>
+                      </label>
+                      <label className="cryst-label">
+                        Polarization ratio (K)
+                        <input
+                          type="number"
+                          step="0.05"
+                          min={0}
+                          value={polarizationRatio}
+                          onChange={(e) => setPolarizationRatio(Number(e.target.value))}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="cryst-subpanel">
+                    <div className="cryst-subpanel__header">
+                      <div>
+                        <p className="eyebrow">Scan window</p>
+                        <h3>2θ grid & profile</h3>
+                      </div>
+                      <p className="muted">Caglioti FWHM: √(U tan²θ + V tanθ + W)</p>
+                    </div>
+                    <div className="cryst-grid">
+                      <label className="cryst-label">
+                        2θ min
+                        <input type="number" value={thetaMin} onChange={(e) => setThetaMin(Number(e.target.value))} />
+                      </label>
+                      <label className="cryst-label">
+                        2θ max
+                        <input type="number" value={thetaMax} onChange={(e) => setThetaMax(Number(e.target.value))} />
+                      </label>
+                      <label className="cryst-label">
+                        Step
+                        <input type="number" value={thetaStep} step="0.01" onChange={(e) => setThetaStep(Number(e.target.value))} />
+                      </label>
+                      <label className="cryst-label">
+                        Profile model
+                        <select value={profileModel} onChange={(e) => setProfileModel(e.target.value)}>
+                          <option value="gaussian">Gaussian</option>
+                          <option value="pseudo_voigt">Pseudo-Voigt</option>
+                        </select>
+                      </label>
+                      <label className="cryst-label">
+                        U
+                        <input type="number" step="0.001" value={profileU} onChange={(e) => setProfileU(Number(e.target.value))} />
+                      </label>
+                      <label className="cryst-label">
+                        V
+                        <input type="number" step="0.001" value={profileV} onChange={(e) => setProfileV(Number(e.target.value))} />
+                      </label>
+                      <label className="cryst-label">
+                        W
+                        <input type="number" step="0.001" value={profileW} onChange={(e) => setProfileW(Number(e.target.value))} />
+                      </label>
+                    </div>
+                  </div>
                 </div>
                 <div className="cryst-panel__actions">
                   <button className="btn" type="button" disabled={!structure} onClick={handleXrd}>
                     Compute XRD
                   </button>
+                  <button className="btn btn--subtle" type="button" onClick={() => handleLoadSample()}>
+                    Load Fe α preset
+                  </button>
                 </div>
+                {xrdInstrument || xrdProfile ? (
+                  <div className="cryst-meta-bar" aria-live="polite">
+                    {xrdInstrument ? (
+                      <div className="cryst-chip">{`${xrdInstrument.radiation} · ${xrdInstrument.geometry.replace("_", " ")}`}</div>
+                    ) : null}
+                    {xrdInstrument?.wavelength_angstrom ? (
+                      <div className="cryst-chip">λ = {xrdInstrument.wavelength_angstrom.toFixed(4)} Å</div>
+                    ) : null}
+                    {xrdInstrument?.polarization_ratio !== null ? (
+                      <div className="cryst-chip">K = {xrdInstrument.polarization_ratio?.toFixed(2)}</div>
+                    ) : null}
+                    {xrdProfile ? (
+                      <div className="cryst-chip">Profile: {xrdProfile.model} (U={xrdProfile.u}, V={xrdProfile.v}, W={xrdProfile.w})</div>
+                    ) : null}
+                    {xrdSummary ? (
+                      <div className="cryst-chip">Peaks: {xrdSummary.peak_count}</div>
+                    ) : null}
+                  </div>
+                ) : null}
                 {peaks.length ? (
                   <div className="cryst-xrd">
                     <div className="cryst-xrd__chart">
@@ -389,7 +543,9 @@ export default function CrystallographicToolsPage() {
                           />
                           <YAxis dataKey="intensity" name="I" domain={[0, 105]} />
                           <Tooltip cursor={{ strokeDasharray: "3 3" }} />
+                          <ReferenceArea x1={thetaMin} x2={thetaMax} fill="rgba(34,211,238,0.06)" stroke="rgba(34,211,238,0.12)" />
                           <Line type="monotone" dataKey="intensity" stroke="#22d3ee" dot={false} strokeWidth={2} />
+                          <Bar dataKey="intensity_normalized" data={xrdChartData} barSize={6} fill="rgba(16,185,129,0.7)" />
                           {peaks.map((peak, idx) => (
                             <ReferenceLine
                               key={`peak-${idx}`}
@@ -404,15 +560,22 @@ export default function CrystallographicToolsPage() {
                       </ResponsiveContainer>
                     </div>
                     <div className="cryst-xrd__list">
-                      {peaks.slice(0, 25).map((peak, index) => (
-                        <div key={index} className="cryst-xrd__row">
-                          <div className="badge">{peak.hkl.join(" ") || "hkl"}</div>
-                          <div>
-                            <div className="cryst-xrd__title">{peak.two_theta.toFixed(2)}° 2θ</div>
-                            <div className="cryst-xrd__meta">d = {peak.d_spacing.toFixed(3)} Å · I = {peak.intensity.toFixed(1)}</div>
+                      {peaks
+                        .slice()
+                        .sort((a, b) => b.intensity_normalized - a.intensity_normalized)
+                        .slice(0, 30)
+                        .map((peak, index) => (
+                          <div key={index} className="cryst-xrd__row">
+                            <div className="badge">{peak.hkl.join(" ") || "hkl"}</div>
+                            <div>
+                              <div className="cryst-xrd__title">{peak.two_theta.toFixed(2)}° 2θ</div>
+                              <div className="cryst-xrd__meta">
+                                d = {peak.d_spacing.toFixed(3)} Å · I = {peak.intensity.toFixed(1)} · I(LP) = {peak.intensity_lp.toFixed(1)}
+                              </div>
+                            </div>
+                            <div className="cryst-chip">{peak.intensity_normalized.toFixed(1)}%</div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                   </div>
                 ) : (
