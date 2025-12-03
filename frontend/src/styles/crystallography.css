@@ -111,6 +111,10 @@
   margin-top: 0.5rem;
 }
 
+.cryst-grid--two {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
 .cryst-label {
   display: flex;
   flex-direction: column;
@@ -125,6 +129,64 @@
   color: inherit;
   border-radius: 8px;
   padding: 0.45rem 0.6rem;
+}
+
+.cryst-label select {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.6);
+  color: inherit;
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+}
+
+.cryst-subpanel {
+  border: 1px dashed rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.6), rgba(37, 99, 235, 0.04));
+}
+
+.cryst-subpanel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.cryst-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.cryst-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(14, 165, 233, 0.4);
+  background: rgba(14, 165, 233, 0.08);
+  color: #e0f2fe;
+  font-size: 0.9rem;
+  cursor: default;
+}
+
+.cryst-chip button,
+button.cryst-chip {
+  cursor: pointer;
+  background: rgba(94, 234, 212, 0.12);
+  border: 1px solid rgba(94, 234, 212, 0.4);
+  color: #e0f2fe;
+}
+
+.cryst-meta-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .cryst-panel__actions {

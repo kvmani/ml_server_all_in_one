@@ -43,24 +43,63 @@ export async function editCif(payload: {
   });
 }
 
-export type XrdPeak = { two_theta: number; intensity: number; intensity_normalized: number; d_spacing: number; hkl: number[] };
+export type XrdPeak = {
+  two_theta: number;
+  intensity: number;
+  intensity_lp: number;
+  intensity_normalized: number;
+  d_spacing: number;
+  hkl: number[];
+  lorentz_polarization: number;
+};
 export type XrdCurvePoint = { two_theta: number; intensity: number };
+export type XrdPattern = {
+  peaks: XrdPeak[];
+  curve: XrdCurvePoint[];
+  range: { min: number; max: number; step: number };
+  instrument: {
+    radiation: string;
+    wavelength_angstrom: number | null;
+    geometry: string;
+    polarization_ratio: number | null;
+  };
+  profile: { u: number; v: number; w: number; model: string };
+  summary: { peak_count: number; max_intensity: number };
+};
 
 export async function xrdPattern(payload: {
   cif: string;
   radiation?: string;
+  instrument?: {
+    radiation?: string;
+    wavelength_angstrom?: number | null;
+    geometry?: string;
+    polarization_ratio?: number | null;
+  };
   two_theta?: { min?: number; max?: number; step?: number };
-}): Promise<{ peaks: XrdPeak[]; curve: XrdCurvePoint[]; range: { min: number; max: number } }> {
+  profile?: { u?: number; v?: number; w?: number; profile?: string };
+}): Promise<XrdPattern> {
   const body = {
     cif: payload.cif,
-    radiation: payload.radiation || "CuKa",
+    instrument: {
+      radiation: payload.instrument?.radiation || payload.radiation || "CuKa",
+      wavelength_angstrom: payload.instrument?.wavelength_angstrom ?? null,
+      geometry: payload.instrument?.geometry || "bragg_brentano",
+      polarization_ratio: payload.instrument?.polarization_ratio ?? 0.5,
+    },
     two_theta: {
       min: payload.two_theta?.min ?? 10,
       max: payload.two_theta?.max ?? 80,
       step: payload.two_theta?.step ?? 0.02,
     },
+    profile: {
+      u: payload.profile?.u ?? 0.02,
+      v: payload.profile?.v ?? 0.0,
+      w: payload.profile?.w ?? 0.1,
+      profile: payload.profile?.profile || "gaussian",
+    },
   };
-  return apiFetch<{ peaks: XrdPeak[]; curve: XrdCurvePoint[]; range: { min: number; max: number } }>("/api/crystallographic_tools/xrd", {
+  return apiFetch<XrdPattern>("/api/crystallographic_tools/xrd", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
