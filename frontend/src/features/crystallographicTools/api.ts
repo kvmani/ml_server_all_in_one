@@ -69,45 +69,64 @@ export async function xrdPattern(payload: {
 
 export type SaedSpot = {
   hkl: number[];
-  x: number;
-  y: number;
-  intensity: number;
-  g_magnitude: number;
-  d_spacing: number;
-  two_theta: number;
+  zone: number;
+  d_angstrom: number;
+  s2: number | null;
+  intensity_raw: number;
+  intensity_rel: number;
+  x_cm: number;
+  y_cm: number;
+  x_rot_cm: number;
+  y_rot_cm: number;
+  x_norm: number;
+  y_norm: number;
+  r_cm: number;
+  two_theta_deg: number;
+  label: string;
 };
 
 export type SaedPattern = {
-  spots: SaedSpot[];
-  calibration: {
-    wavelength_angstrom: number;
-    camera_length_mm: number;
+  metadata: {
+    phase_name: string | null;
+    formula: string;
+    spacegroup: string | null;
     zone_axis: number[];
+    x_axis_hkl: number[] | null;
+    inplane_rotation_deg: number;
+    voltage_kv: number;
+    lambda_angstrom: number;
+    camera_length_cm: number;
+    laue_zone: number;
+    min_d_angstrom: number | null;
     max_index: number;
-    g_max: number;
+    intensity_min_relative: number;
   };
-  basis: { zone: number[]; x: number[]; y: number[] };
+  limits: { x_min: number; x_max: number; y_min: number; y_max: number; r_max: number; i_max: number };
+  spots: SaedSpot[];
 };
 
 export async function temSaed(payload: {
   cif: string;
   zone_axis: number[];
   voltage_kv?: number;
+  camera_length_cm?: number;
   camera_length_mm?: number;
   max_index?: number;
-  g_max?: number;
-  rotation_deg?: number;
-  zone_tolerance_deg?: number;
+  min_d_angstrom?: number;
+  intensity_min_relative?: number;
+  x_axis_hkl?: number[];
+  inplane_rotation_deg?: number;
 }): Promise<SaedPattern> {
   const body = {
     cif: payload.cif,
     zone_axis: payload.zone_axis,
     voltage_kv: payload.voltage_kv ?? 200,
-    camera_length_mm: payload.camera_length_mm ?? 100,
+    camera_length_cm: payload.camera_length_cm ?? (payload.camera_length_mm ? payload.camera_length_mm / 10 : 10),
     max_index: payload.max_index ?? 3,
-    g_max: payload.g_max ?? 6,
-    rotation_deg: payload.rotation_deg ?? 0,
-    zone_tolerance_deg: payload.zone_tolerance_deg ?? 2.5,
+    min_d_angstrom: payload.min_d_angstrom ?? 0.5,
+    intensity_min_relative: payload.intensity_min_relative ?? 0.01,
+    x_axis_hkl: payload.x_axis_hkl,
+    inplane_rotation_deg: payload.inplane_rotation_deg ?? 0,
   };
   return apiFetch<SaedPattern>("/api/crystallographic_tools/tem_saed", {
     method: "POST",

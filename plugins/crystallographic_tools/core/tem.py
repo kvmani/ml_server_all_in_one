@@ -1,141 +1,261 @@
-"""Transmission electron diffraction (SAED) helpers."""
+"""TEM SAED pattern simulation utilities."""
 
 from __future__ import annotations
 
 import math
-from typing import List, Sequence
+from dataclasses import asdict, dataclass
+from typing import Iterable, Mapping, Sequence
 
 import numpy as np
 from common.validation import ValidationError
+from pymatgen.analysis.diffraction.tem import TEMCalculator
 from pymatgen.core import Structure
 
 
-def _electron_wavelength_angstrom(voltage_kv: float) -> float:
-    """Relativistic electron wavelength in angstroms."""
-
-    if voltage_kv <= 0:
-        raise ValidationError("Accelerating voltage must be positive")
-    return 12.398 / math.sqrt(voltage_kv * (2 * 511 + voltage_kv))
-
-
-def _build_screen_basis(zone_axis_cart: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return an orthonormal basis spanning the diffraction plane."""
-
-    zone_unit = zone_axis_cart / np.linalg.norm(zone_axis_cart)
-    trial = np.array([0.0, 0.0, 1.0])
-    if abs(np.dot(zone_unit, trial)) > 0.9:
-        trial = np.array([0.0, 1.0, 0.0])
-    basis_x = np.cross(zone_unit, trial)
-    basis_x /= np.linalg.norm(basis_x)
-    basis_y = np.cross(zone_unit, basis_x)
-    basis_y /= np.linalg.norm(basis_y)
-    return zone_unit, basis_x, basis_y
+def _validate_axis(axis: Sequence[float], label: str) -> tuple[int, int, int]:
+    if len(axis) != 3:
+        raise ValidationError(f"{label} must have three components")
+    try:
+        values = tuple(int(v) for v in axis)
+    except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+        raise ValidationError(f"{label} must be integers") from exc
+    if all(v == 0 for v in values):
+        raise ValidationError(f"{label} cannot be all zeros")
+    return values
 
 
-def compute_saed_pattern(
-    structure: Structure,
-    *,
-    zone_axis: Sequence[float],
-    voltage_kv: float = 200.0,
-    camera_length_mm: float = 100.0,
-    max_index: int = 3,
-    g_max: float = 6.0,
-    zone_tolerance_deg: float = 2.5,
-    rotation_deg: float = 0.0,
-) -> dict:
-    """Compute a kinematic SAED spot list for a given zone axis."""
+@dataclass
+class SaedConfig:
+    structure: Structure
+    zone_axis: tuple[int, int, int]
+    voltage_kv: float = 200.0
+    camera_length_cm: float = 16.0
+    x_axis_hkl: tuple[int, int, int] | None = None
+    inplane_rotation_deg: float = 0.0
+    min_d_angstrom: float | None = 0.5
+    max_index: int = 8
+    laue_zone: int = 0
+    intensity_min_relative: float = 0.01
+    normalize_position: bool = True
+    normalize_intensity: bool = True
+    phase_name: str | None = None
 
-    lattice = structure.lattice
-    zone = np.array(zone_axis, dtype=float)
-    if zone.shape != (3,):
-        raise ValidationError("Zone axis must have three components")
-    if np.allclose(zone, 0):
-        raise ValidationError("Zone axis cannot be zero")
+    @classmethod
+    def from_payload(cls, structure: Structure, payload: Mapping[str, object]) -> "SaedConfig":
+        zone_axis = _validate_axis(payload.get("zone_axis", (0, 0, 1)), "Zone axis")
+        x_axis_raw = payload.get("x_axis_hkl")
+        x_axis_hkl = _validate_axis(x_axis_raw, "x_axis_hkl") if x_axis_raw else None
 
-    recip = lattice.reciprocal_lattice
-    zone_cart = np.array(lattice.get_cartesian_coords(zone), dtype=float)
-    zone_unit, basis_x, basis_y = _build_screen_basis(zone_cart)
-    wavelength = _electron_wavelength_angstrom(voltage_kv)
-    zone_tol_rad = math.radians(zone_tolerance_deg)
-    rotation_rad = math.radians(rotation_deg)
+        try:
+            voltage_kv = float(payload.get("voltage_kv", 200.0))
+            camera_length_cm = float(payload.get("camera_length_cm", payload.get("camera_length_mm", 160.0) / 10))
+            inplane_rotation_deg = float(payload.get("inplane_rotation_deg", payload.get("rotation_deg", 0.0)))
+            min_d_angstrom_raw = payload.get("min_d_angstrom", None)
+            min_d_angstrom = float(min_d_angstrom_raw) if min_d_angstrom_raw is not None else 0.5
+            max_index = int(payload.get("max_index", 8))
+            laue_zone = int(payload.get("laue_zone", 0))
+            intensity_min_relative = float(payload.get("intensity_min_relative", 0.01))
+            normalize_position = bool(payload.get("normalize_position", True))
+            normalize_intensity = bool(payload.get("normalize_intensity", True))
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("Invalid numeric TEM parameters") from exc
 
-    spots: List[dict] = [
-        {
-            "hkl": [0, 0, 0],
-            "x": 0.0,
-            "y": 0.0,
-            "g_magnitude": 0.0,
-            "d_spacing": float("inf"),
-            "intensity": 1.0,
-            "two_theta": 0.0,
-        }
-    ]
-    max_abs_position = 0.0
-    for h in range(-max_index, max_index + 1):
-        for k in range(-max_index, max_index + 1):
-            for l in range(-max_index, max_index + 1):
-                if h == k == l == 0:
-                    continue
-                hkl = [h, k, l]
-                g_cart = np.array(recip.get_cartesian_coords(hkl), dtype=float)
-                g_len = float(np.linalg.norm(g_cart))
-                if g_len <= 0 or g_len > g_max:
-                    continue
-                cos_zone = float(np.dot(g_cart, zone_unit) / g_len)
-                cos_zone = min(1.0, max(-1.0, cos_zone))
-                if abs(math.acos(cos_zone)) > zone_tol_rad:
-                    continue
-                d_spacing = float(lattice.d_hkl(hkl))
-                intensity = 1.0 / (1.0 + g_len**2)
-                x = float(np.dot(g_cart, basis_x))
-                y = float(np.dot(g_cart, basis_y))
-                if rotation_rad:
-                    cos_r, sin_r = math.cos(rotation_rad), math.sin(rotation_rad)
-                    rot_x = x * cos_r - y * sin_r
-                    rot_y = x * sin_r + y * cos_r
-                    x, y = rot_x, rot_y
-                radius_mm = camera_length_mm * wavelength * g_len / 10.0
-                two_theta = math.degrees(math.asin(min(1.0, 0.5 * wavelength * g_len)))
-                max_abs_position = max(max_abs_position, abs(x), abs(y))
-                spots.append(
-                    {
-                        "hkl": hkl,
-                        "x": x * radius_mm,
-                        "y": y * radius_mm,
-                        "g_magnitude": g_len,
-                        "d_spacing": d_spacing,
-                        "intensity": intensity,
-                        "two_theta": two_theta,
-                    }
-                )
+        if voltage_kv <= 0:
+            raise ValidationError("Accelerating voltage must be positive")
+        if camera_length_cm <= 0:
+            raise ValidationError("Camera length must be positive")
+        if max_index <= 0:
+            raise ValidationError("max_index must be positive")
+        if intensity_min_relative < 0:
+            raise ValidationError("intensity_min_relative cannot be negative")
 
-    # Mirror spots into all quadrants to ensure symmetry in the plot
-    mirrored: list[dict] = []
-    for spot in spots:
-        if spot["g_magnitude"] == 0:
-            mirrored.append(spot)
+        g_max = payload.get("g_max")
+        if g_max:
+            try:
+                g_max_val = float(g_max)
+                if g_max_val > 0:
+                    min_d_angstrom = min_d_angstrom or (2 * math.pi / g_max_val)
+            except (TypeError, ValueError):
+                pass
+
+        phase_name = payload.get("phase_name") if isinstance(payload.get("phase_name"), str) else None
+
+        return cls(
+            structure=structure,
+            zone_axis=zone_axis,
+            voltage_kv=voltage_kv,
+            camera_length_cm=camera_length_cm,
+            x_axis_hkl=x_axis_hkl,
+            inplane_rotation_deg=inplane_rotation_deg,
+            min_d_angstrom=min_d_angstrom,
+            max_index=max_index,
+            laue_zone=laue_zone,
+            intensity_min_relative=intensity_min_relative,
+            normalize_position=normalize_position,
+            normalize_intensity=normalize_intensity,
+            phase_name=phase_name,
+        )
+
+
+@dataclass
+class SaedSpot:
+    hkl: tuple[int, int, int]
+    zone: int
+    d_angstrom: float
+    s2: float | None
+    intensity_raw: float
+    intensity_rel: float
+    x_cm: float
+    y_cm: float
+    x_rot_cm: float
+    y_rot_cm: float
+    x_norm: float
+    y_norm: float
+    r_cm: float
+    two_theta_deg: float
+    label: str
+
+
+def _rotation_angle_for_x_axis(
+    positions: Mapping[tuple[int, int, int], np.ndarray],
+    x_axis_hkl: tuple[int, int, int] | None,
+) -> float:
+    if not x_axis_hkl:
+        return 0.0
+    coords = positions.get(tuple(x_axis_hkl))
+    if coords is None:
+        return 0.0
+    x_val, y_val = float(coords[0]), float(coords[1])
+    return -math.degrees(math.atan2(y_val, x_val))
+
+
+def _normalize(value: float, min_value: float, max_value: float) -> float:
+    if max_value - min_value < 1e-9:
+        return 0.0
+    return 2 * (value - min_value) / (max_value - min_value) - 1
+
+
+def compute_saed_pattern(structure: Structure, *, config: SaedConfig | None = None, **kwargs) -> dict:
+    cfg = config or SaedConfig.from_payload(structure, kwargs)
+
+    calculator = TEMCalculator(
+        voltage=cfg.voltage_kv,
+        beam_direction=cfg.zone_axis,
+        camera_length=cfg.camera_length_cm,
+    )
+    wavelength = calculator.wavelength_rel()
+
+    points = calculator.generate_points(coord_left=-cfg.max_index, coord_right=cfg.max_index)
+    points = [tuple(map(int, p)) for p in points if max(abs(int(v)) for v in p) <= cfg.max_index]
+    points = [p for p in points if any(p)]
+    zone_filtered = calculator.zone_axis_filter(points, laue_zone=cfg.laue_zone)
+
+    d_map = calculator.get_interplanar_spacings(structure, zone_filtered)
+    if cfg.min_d_angstrom:
+        d_map = {hkl: d for hkl, d in d_map.items() if d >= cfg.min_d_angstrom}
+    if not d_map:
+        raise ValidationError("No reflections remain after d-spacing filtering")
+
+    bragg_map = calculator.bragg_angles(d_map)
+    intensity_raw = calculator.cell_intensity(structure, bragg_map)
+    intensity_norm = calculator.normalized_cell_intensity(structure, bragg_map)
+    positions = calculator.get_positions(structure, list(bragg_map.keys()))
+    s2_map = calculator.get_s2(bragg_map)
+
+    spots: list[SaedSpot] = []
+    x_values: list[float] = []
+    y_values: list[float] = []
+    r_values: list[float] = []
+    intensity_values: list[float] = []
+
+    base_rotation_deg = _rotation_angle_for_x_axis(positions, cfg.x_axis_hkl)
+    total_rotation_rad = math.radians(base_rotation_deg + cfg.inplane_rotation_deg)
+
+    for hkl, theta in bragg_map.items():
+        i_rel = float(intensity_norm.get(hkl, 0.0))
+        if i_rel < cfg.intensity_min_relative:
             continue
-        x, y = spot["x"], spot["y"]
-        for sx, sy in [(1, 1), (-1, 1), (1, -1), (-1, -1)]:
-            mirrored.append({**spot, "x": x * sx, "y": y * sy})
 
-    mirrored.sort(key=lambda item: item["intensity"], reverse=True)
-    return {
-        "spots": mirrored,
-        "calibration": {
-            "wavelength_angstrom": wavelength,
-            "camera_length_mm": camera_length_mm,
-            "zone_axis": list(zone_axis),
-            "max_index": max_index,
-            "g_max": g_max,
-        },
-        "basis": {
-            "zone": zone_unit.tolist(),
-            "x": basis_x.tolist(),
-            "y": basis_y.tolist(),
-        },
-        "range": max_abs_position if max_abs_position else 1.0,
+        pos = positions[hkl]
+        x_cm, y_cm = float(pos[0]), float(pos[1])
+        cos_r, sin_r = math.cos(total_rotation_rad), math.sin(total_rotation_rad)
+        x_rot = cos_r * x_cm - sin_r * y_cm
+        y_rot = sin_r * x_cm + cos_r * y_cm
+        r_cm = math.sqrt(x_rot**2 + y_rot**2)
+
+        x_values.append(x_rot)
+        y_values.append(y_rot)
+        r_values.append(r_cm)
+        intensity_values.append(i_rel)
+
+        two_theta = math.degrees(2 * theta)
+        s2_val = s2_map.get(hkl)
+
+        spots.append(
+            SaedSpot(
+                hkl=tuple(int(v) for v in hkl),
+                zone=cfg.laue_zone,
+                d_angstrom=float(d_map[hkl]),
+                s2=float(s2_val) if s2_val is not None else None,
+                intensity_raw=float(intensity_raw.get(hkl, 0.0)),
+                intensity_rel=i_rel if cfg.normalize_intensity else float(intensity_raw.get(hkl, 0.0)),
+                x_cm=x_cm,
+                y_cm=y_cm,
+                x_rot_cm=x_rot,
+                y_rot_cm=y_rot,
+                x_norm=0.0,
+                y_norm=0.0,
+                r_cm=r_cm,
+                two_theta_deg=two_theta,
+                label="".join(str(int(v)) for v in hkl),
+            )
+        )
+
+    if not spots:
+        raise ValidationError("No reflections meet the intensity threshold")
+
+    x_min, x_max = min(x_values), max(x_values)
+    y_min, y_max = min(y_values), max(y_values)
+    r_max = max(r_values) if r_values else 0.0
+    i_max = max(intensity_values) if intensity_values else 0.0
+
+    if cfg.normalize_position:
+        for spot in spots:
+            spot.x_norm = _normalize(spot.x_rot_cm, x_min, x_max)
+            spot.y_norm = _normalize(spot.y_rot_cm, y_min, y_max)
+
+    metadata = {
+        "phase_name": cfg.phase_name or structure.composition.reduced_formula,
+        "formula": structure.formula,
+        "spacegroup": structure.get_space_group_info()[0],
+        "zone_axis": list(cfg.zone_axis),
+        "x_axis_hkl": list(cfg.x_axis_hkl) if cfg.x_axis_hkl else None,
+        "inplane_rotation_deg": cfg.inplane_rotation_deg,
+        "voltage_kv": cfg.voltage_kv,
+        "lambda_angstrom": wavelength,
+        "camera_length_cm": cfg.camera_length_cm,
+        "laue_zone": cfg.laue_zone,
+        "min_d_angstrom": cfg.min_d_angstrom,
+        "max_index": cfg.max_index,
+        "intensity_min_relative": cfg.intensity_min_relative,
     }
 
+    limits = {
+        "x_min": x_min,
+        "x_max": x_max,
+        "y_min": y_min,
+        "y_max": y_max,
+        "r_max": r_max,
+        "i_max": i_max,
+    }
 
-__all__ = ["compute_saed_pattern"]
+    payload = {
+        "metadata": metadata,
+        "limits": limits,
+        "spots": [asdict(spot) for spot in sorted(spots, key=lambda s: s.intensity_rel, reverse=True)],
+    }
+
+    return payload
+
+
+__all__ = ["SaedConfig", "SaedSpot", "compute_saed_pattern"]
