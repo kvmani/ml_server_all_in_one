@@ -22,7 +22,16 @@ from common.validation import (
     validate_mime,
 )
 
-from ..core import MergeSpec, PageRangeError, merge_pdfs, pdf_metadata, split_pdf
+from ..core import (
+    MergeSpec,
+    PageRangeError,
+    PageSequenceError,
+    StitchItem,
+    merge_pdfs,
+    pdf_metadata,
+    split_pdf,
+    stitch_pdfs,
+)
 
 
 class MergeItem(SchemaModel):
@@ -231,7 +240,153 @@ def metadata() -> Response:
     return ok(payload)
 
 
+class StitchItemPayload(SchemaModel):
+    field: str
+    alias: str
+    pages: str = "all"
+
+
+class StitchPayload(SchemaModel):
+    manifest: list[StitchItemPayload]
+    output_name: str | None = None
+
+
+def _stitch_limit() -> FileLimit:
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get("pdf_tools", {})
+    # Use generic 'stripe' or specific 'stitch_upload' config if desired,
+    # falling back to default limits similarly to merge
+    upload = settings.get("stitch_upload")
+    return FileLimit.from_settings(upload, default_max_files=6, default_max_mb=6)
+
+
+@api_bp.post("/stitch")
+def stitch() -> Response:
+    manifest_raw = request.form.get("manifest")
+    if not manifest_raw:
+        return fail(
+            ValidationAppError(
+                message="Missing stitch manifest", code="pdf.missing_manifest"
+            )
+        )
+    try:
+        manifest_data = json.loads(manifest_raw)
+    except json.JSONDecodeError as exc:
+        return fail(
+            ValidationAppError(
+                message="Invalid manifest format",
+                code="pdf.invalid_manifest",
+                details={"error": str(exc)},
+            )
+        )
+    if not isinstance(manifest_data, list):
+        return fail(
+            ValidationAppError(
+                message="Manifest must be a list", code="pdf.invalid_manifest"
+            )
+        )
+
+    payload_dict = {
+        "manifest": manifest_data,
+        "output_name": request.form.get("output_name"),
+    }
+    try:
+        payload = parse_model(StitchPayload, payload_dict)
+    except ValidationError as exc:
+        return fail(
+            ValidationAppError(
+                message=str(exc),
+                code="pdf.invalid_manifest",
+                details=getattr(exc, "details", None),
+            )
+        )
+
+    uploads = {}
+    for item in payload.manifest:
+        file = request.files.get(item.field)
+        if file is None:
+            return fail(
+                ValidationAppError(
+                    message=f"Missing file for field {item.field}",
+                    code="pdf.missing_file",
+                )
+            )
+        uploads[item.field] = file
+
+    try:
+        enforce_limits(uploads.values(), _stitch_limit())
+        validate_mime(uploads.values(), {"application/pdf"})
+    except ValidationAppError as exc:
+        return fail(exc)
+    except ValidationError as exc:
+        return fail(
+            ValidationAppError(
+                message=str(exc),
+                code="pdf.invalid_upload",
+                details=getattr(exc, "details", None),
+            )
+        )
+
+    items: list[StitchItem] = []
+    parts_meta: list[dict[str, object]] = []
+    cached_bytes: dict[str, bytes] = {}
+
+    for item in payload.manifest:
+        file = uploads[item.field]
+        if item.field not in cached_bytes:
+            cached_bytes[item.field] = file.read()
+        data = cached_bytes[item.field]
+
+        # Optional: validate metadata read for each file
+        try:
+            meta = pdf_metadata(data)
+        except Exception:
+            return fail(
+                AppError(code="pdf.metadata_error", message="Unable to read PDF")
+            )
+
+        pages = (item.pages or "all").strip() or "all"
+        items.append(StitchItem(alias=item.alias, data=data, pages=pages))
+        parts_meta.append(
+            {
+                "alias": item.alias,
+                "filename": file.filename or item.field,
+                "pages_requested": pages,
+                "total_pages": meta.pages,
+            }
+        )
+
+    try:
+        stitched = stitch_pdfs(items)
+    except PageSequenceError as exc:
+        return fail(
+            ValidationAppError(message=str(exc), code="pdf.invalid_page_range")
+        )
+
+    output_name = payload.output_name or "stitched.pdf"
+    safe_name = secure_filename(output_name)
+    if not safe_name.lower().endswith(".pdf"):
+        safe_name = f"{safe_name}.pdf"
+
+    if _download_requested():
+        buffer = BytesIO(stitched)
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=safe_name,
+            max_age=0,
+        )
+
+    response_payload = {
+        "filename": safe_name,
+        "pdf_base64": base64.b64encode(stitched).decode("ascii"),
+        "parts": parts_meta,
+    }
+    return ok(response_payload)
+
+
 blueprints = [api_bp]
 
 
-__all__ = ["blueprints", "merge", "split", "metadata"]
+__all__ = ["blueprints", "merge", "split", "metadata", "stitch"]

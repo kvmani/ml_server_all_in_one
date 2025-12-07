@@ -7,6 +7,13 @@ from typing import Iterable, List
 from PyPDF2 import PdfReader, PdfWriter
 
 from .page_ranges import PageRangeError, parse_page_range
+from .stitch import (
+    PageSequenceError,
+    StitchError,
+    StitchItem,
+    parse_page_sequence,
+    stitch_pdfs,
+)
 
 
 @dataclass(frozen=True)
@@ -63,4 +70,9 @@ __all__ = [
     "pdf_metadata",
     "PageRangeError",
     "parse_page_range",
+    "StitchItem",
+    "StitchError",
+    "PageSequenceError",
+    "parse_page_sequence",
+    "stitch_pdfs",
 ]

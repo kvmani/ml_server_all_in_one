@@ -9,7 +9,7 @@ import HomePage from "./pages/HomePage";
 import HydrideSegmentationPage from "./pages/HydrideSegmentationPage";
 import CrystallographicToolsPage from "./pages/CrystallographicToolsPage";
 import PdfToolsPage from "./pages/PdfToolsPage";
-import PdfStitchPage from "./pages/PdfStitchPage";
+// PdfStitchPage removed
 import TabularMlPage from "./pages/TabularMlPage";
 import UnitConverterPage from "./pages/UnitConverterPage";
 
@@ -24,8 +24,6 @@ function AppContent() {
         <Route path="/" element={<HomePage />} />
         <Route path="/tools/pdf_tools" element={<PdfToolsPage />} />
         <Route path="/pdf_tools/*" element={<Navigate to="/tools/pdf_tools" replace />} />
-        <Route path="/tools/pdf_stitch" element={<PdfStitchPage />} />
-        <Route path="/pdf_stitch/*" element={<Navigate to="/tools/pdf_stitch" replace />} />
         <Route path="/tools/crystallographic_tools" element={<CrystallographicToolsPage />} />
         <Route path="/crystallographic_tools/*" element={<Navigate to="/tools/crystallographic_tools" replace />} />
         <Route path="/tools/unit_converter" element={<UnitConverterPage />} />
