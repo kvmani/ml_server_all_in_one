@@ -29,6 +29,8 @@ class BaseConfig:
         "X-Frame-Options": "DENY",
         "Content-Security-Policy": (
             "default-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
             "img-src 'self' data: blob:; "
             "frame-src 'self' blob:; "
             "object-src 'none'; "

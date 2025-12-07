@@ -2,6 +2,11 @@
   padding: 1rem;
 }
 
+.cryst-page-container {
+  width: 100%;
+  padding: 0 1.5rem;
+}
+
 .cryst-compact__header {
   display: flex;
   align-items: center;
@@ -35,7 +40,7 @@
 
 .cryst-compact__grid {
   display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 340px) 1fr;
   gap: 1rem;
   align-items: start;
 }
@@ -353,7 +358,45 @@ button.cryst-chip {
   .cryst-compact__grid {
     grid-template-columns: 1fr;
   }
+
   .cryst-sidebar {
     flex-direction: column;
   }
+}
+
+.cryst-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.cryst-table th,
+.cryst-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.cryst-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface, #0f172a);
+  color: var(--text-muted, #94a3b8);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  z-index: 10;
+}
+
+.cryst-table tr:hover {
+  background: rgba(148, 163, 184, 0.05);
+}
+
+.cryst-table .text-right {
+  text-align: right;
+}
+
+.cryst-table .font-mono {
+  font-family: monospace;
 }

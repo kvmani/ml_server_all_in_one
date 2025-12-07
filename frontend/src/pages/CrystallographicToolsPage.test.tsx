@@ -54,7 +54,7 @@ describe("CrystallographicToolsPage", () => {
       }
       if (url.includes("/xrd")) {
         return Promise.resolve(apiResponse({
-          peaks: [{ two_theta: 30, intensity: 100, intensity_normalized: 100, d_spacing: 2.0, hkl: [1, 1, 1] }],
+          peaks: [{ two_theta: 30, intensity: 100, intensity_lp: 50, intensity_normalized: 100, d_spacing: 2.0, hkl: [1, 1, 1] }],
           curve: [{ two_theta: 30, intensity: 100 }],
           range: { min: 20, max: 80 },
         }));
@@ -127,7 +127,7 @@ describe("CrystallographicToolsPage", () => {
     await waitFor(() => expect(screen.getByText("Si2")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /compute xrd/i }));
-    await waitFor(() => expect(screen.getByText(/30\.00° 2θ/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("30.000")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("tab", { name: /TEM/i }));
     fireEvent.click(screen.getByRole("button", { name: /simulate saed/i }));

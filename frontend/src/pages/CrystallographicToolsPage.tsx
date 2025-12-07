@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import crystallographyIcon from "../assets/pdf_tools_icon.png";
+import crystallographyIcon from "../assets/unit_cell_icon.png";
 import { StatusMessage } from "../components/StatusMessage";
 import { useLoading } from "../contexts/LoadingContext";
 import { useStatus } from "../hooks/useStatus";
@@ -211,12 +211,12 @@ export default function CrystallographicToolsPage() {
           inplane_rotation_deg: inplaneRotation,
         }),
       );
-          setSaedPattern(pattern);
-          status.setStatus("SAED pattern simulated", "success");
-        } catch (error) {
-          status.setStatus(error instanceof Error ? error.message : "SAED calculation failed", "error");
-        }
-      }, [structure, cifText, zoneAxis, voltage, cameraLengthCm, maxIndex, minD, intensityThreshold, xAxis, inplaneRotation, status, withLoader]);
+      setSaedPattern(pattern);
+      status.setStatus("SAED pattern simulated", "success");
+    } catch (error) {
+      status.setStatus(error instanceof Error ? error.message : "SAED calculation failed", "error");
+    }
+  }, [structure, cifText, zoneAxis, voltage, cameraLengthCm, maxIndex, minD, intensityThreshold, xAxis, inplaneRotation, status, withLoader]);
 
   const handleCalculator = useCallback(async () => {
     if (!structure) return;
@@ -258,7 +258,7 @@ export default function CrystallographicToolsPage() {
   );
 
   return (
-    <section className="shell surface-block cryst-shell" aria-labelledby="cryst-tools-title">
+    <section className="cryst-page-container surface-block cryst-shell" aria-labelledby="cryst-tools-title">
       <header className="cryst-compact__header">
         <div className="cryst-compact__title">
           <div className="cryst-compact__icon" aria-hidden="true">
@@ -337,9 +337,9 @@ export default function CrystallographicToolsPage() {
                           setStructure((current) =>
                             current
                               ? {
-                                  ...current,
-                                  lattice: { ...current.lattice, [field.key]: Number(event.target.value) },
-                                }
+                                ...current,
+                                lattice: { ...current.lattice, [field.key]: Number(event.target.value) },
+                              }
                               : current,
                           )
                         }
@@ -526,7 +526,7 @@ export default function CrystallographicToolsPage() {
                 {peaks.length ? (
                   <div className="cryst-xrd">
                     <div className="cryst-xrd__chart">
-                      <ResponsiveContainer width="100%" height={260}>
+                      <ResponsiveContainer width="100%" height={500}>
                         <ComposedChart
                           data={xrdCurve}
                           margin={{ top: 10, bottom: 20, left: 10, right: 10 }}
@@ -560,22 +560,33 @@ export default function CrystallographicToolsPage() {
                       </ResponsiveContainer>
                     </div>
                     <div className="cryst-xrd__list">
-                      {peaks
-                        .slice()
-                        .sort((a, b) => b.intensity_normalized - a.intensity_normalized)
-                        .slice(0, 30)
-                        .map((peak, index) => (
-                          <div key={index} className="cryst-xrd__row">
-                            <div className="badge">{peak.hkl.join(" ") || "hkl"}</div>
-                            <div>
-                              <div className="cryst-xrd__title">{peak.two_theta.toFixed(2)}° 2θ</div>
-                              <div className="cryst-xrd__meta">
-                                d = {peak.d_spacing.toFixed(3)} Å · I = {peak.intensity.toFixed(1)} · I(LP) = {peak.intensity_lp.toFixed(1)}
-                              </div>
-                            </div>
-                            <div className="cryst-chip">{peak.intensity_normalized.toFixed(1)}%</div>
-                          </div>
-                        ))}
+                      <table className="cryst-table">
+                        <thead>
+                          <tr>
+                            <th>(hkl)</th>
+                            <th className="text-right">2θ (°)</th>
+                            <th className="text-right">d (Å)</th>
+                            <th className="text-right">I (raw)</th>
+                            <th className="text-right">I (LP)</th>
+                            <th className="text-right">I (rel) %</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {peaks
+                            .slice()
+                            .sort((a, b) => b.intensity_normalized - a.intensity_normalized)
+                            .map((peak, index) => (
+                              <tr key={index}>
+                                <td className="font-mono">{peak.hkl.join(" ") || "hkl"}</td>
+                                <td className="text-right">{peak.two_theta.toFixed(3)}</td>
+                                <td className="text-right">{peak.d_spacing.toFixed(4)}</td>
+                                <td className="text-right">{peak.intensity.toFixed(2)}</td>
+                                <td className="text-right">{peak.intensity_lp.toFixed(2)}</td>
+                                <td className="text-right">{peak.intensity_normalized.toFixed(1)}</td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 ) : (
@@ -670,7 +681,7 @@ export default function CrystallographicToolsPage() {
                 {saedPattern ? (
                   <>
                     <div className="cryst-saed">
-                      <ResponsiveContainer width="100%" height={320}>
+                      <ResponsiveContainer width="100%" height={600}>
                         <ScatterChart margin={{ top: 10, left: 10, right: 10, bottom: 20 }}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis type="number" dataKey="x_norm" name="X" tick={{ fontSize: 12 }} domain={[-1.05, 1.05]} />
