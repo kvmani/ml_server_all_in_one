@@ -109,6 +109,32 @@ const HELP_BUILDERS: Record<string, HelpBuilder> = {
       },
     ],
   }),
+  scientific_calculator: () => ({
+    category: "General utilities",
+    title: "Scientific Calculator guidance",
+    subtitle:
+      "Evaluate expressions with allowlisted math functions, toggle degree/radian modes for trig, and build 1D/2D plot-ready datasets.",
+    sections: [
+      {
+        heading: "Expression evaluator",
+        ordered: [
+          "Enter an expression using +, -, *, /, %, and power with ^ or **.",
+          "Functions available: sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, log, ln, log10, exp, sqrt, abs, floor, ceil, sinc, min, max.",
+          "Set angle mode (radian or degree) to control trig inputs/outputs.",
+          "Provide optional variables as name=value pairs (e.g., x=2, y=3) and run Evaluate to see the numeric result plus canonical parentheses.",
+        ],
+      },
+      {
+        heading: "Function plotter",
+        ordered: [
+          "Choose 1 or 2 variables and define start/stop/step for each; grids are capped at 5000 points.",
+          "Add constants (a, b, c, …) as name=value pairs; they are injected into the expression.",
+          "Submit to receive either a 1D series {x, y} or a 2D grid {x, y, z} ready for charts.",
+        ],
+        hint: "Expressions over 1024 characters or grids over 5000 points are rejected to keep the offline app responsive.",
+      },
+    ],
+  }),
   hydride_segmentation: ({ settings }) => {
     const upload = (settings.upload as Record<string, unknown>) || {};
     const maxMb = Number(upload.max_mb ?? 5);

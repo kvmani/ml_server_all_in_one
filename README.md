@@ -11,6 +11,7 @@ An offline-first Flask platform bundling microstructure analysis, PDF workflows,
 | **PDF Stitch** | Upload a few PDFs, assign aliases, and describe an exact multi-line page plan (including “end”) to assemble a custom sequence in one pass. |
 | **Tabular ML** | Upload CSV datasets (≤2 MB), preview rows, build scatter plots, auto-detect regression vs. classification, and train CPU-only models (Random Forest, Gradient Boosting, SVM, Extra Trees, sklearn MLP, optional Torch MLP if installed) with importances. |
 | **Unit Converter** | Convert between engineering units with Pint-backed accuracy, interval-aware temperature deltas, expression evaluation, and configurable precision. |
+| **Scientific Calculator** | Evaluate expressions in degree/radian modes with allowlisted math functions and plot 1D/2D functions safely offline. |
 | **Global Activity Log** | Persistent, non-invasive footer console that surfaces upload status, validation warnings, and task progress across every tool in real time. |
 
 Browse in-app help for each workspace via the header **Help** link or jump directly:
@@ -27,6 +28,7 @@ Browse in-app help for each workspace via the header **Help** link or jump direc
 - **Hydride Segmentation** – Upload a PNG/JPEG/TIFF, pick the **Conventional** or **ML proxy** backend, tune CLAHE/threshold/morphology sliders, and run segmentation. Use the history controls to compare attempts, then download the mask/overlay bundle.
 - **Tabular ML** – Upload a CSV (defaults to ≤2 MB), preview schema, optionally drop outliers or filter rows, choose a target column, select an algorithm, and train. Review metrics/feature importances, then run single-row or batch inference directly in the results panel.
 - **Unit Converter** – Choose a measurement family, enter a numeric value (scientific notation allowed), pick source/destination units, and copy the four-decimal result. Use **Reset** when switching categories.
+- **Scientific Calculator** – Enter an expression with operators/functions (sin/cos/tan/log/exp/sqrt/sinc/etc.), pick angle mode (radian/degree), and evaluate to see both the numeric result and a canonical parenthesized rendering. Switch to the plot tab to define up to two variables with ranges/steps, optional constants, and fetch either a 1D series or 2D surface grid for charting.
 - **Crystallographic Tools** – Load a CIF, adjust lattice parameters or sites, and download the edited CIF. For diffraction, choose an XRD radiation type and 2θ window to return peak tables; for SAED/TEM, set accelerating voltage and camera length to compute spot positions and intensities. All calculations are in-memory and offline.
 
 ### Unified activity window

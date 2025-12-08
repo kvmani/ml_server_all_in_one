@@ -12,6 +12,7 @@ import PdfToolsPage from "./pages/PdfToolsPage";
 // PdfStitchPage removed
 import TabularMlPage from "./pages/TabularMlPage";
 import UnitConverterPage from "./pages/UnitConverterPage";
+import ScientificCalculatorPage from "./pages/ScientificCalculatorPage";
 
 function AppContent() {
   const { currentTheme } = useAppContext();
@@ -32,6 +33,8 @@ function AppContent() {
         <Route path="/hydride_segmentation/*" element={<Navigate to="/tools/hydride_segmentation" replace />} />
         <Route path="/tools/tabular_ml" element={<TabularMlPage />} />
         <Route path="/tabular_ml/*" element={<Navigate to="/tools/tabular_ml" replace />} />
+        <Route path="/tools/scientific_calculator" element={<ScientificCalculatorPage />} />
+        <Route path="/scientific_calculator/*" element={<Navigate to="/tools/scientific_calculator" replace />} />
         <Route path="/help/:slug" element={<HelpPage />} />
         <Route path="*" element={<ErrorPage status={404} title="Page not found" message="The requested route does not exist." />} />
       </Routes>
