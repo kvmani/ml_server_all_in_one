@@ -21,6 +21,14 @@ Browse in-app help for each workspace via the header **Help** link or jump direc
 - `/help/tabular_ml`
 - `/help/unit_converter`
 
+## User guide
+
+- **PDF Tools** – Merge: drop up to 10 PDFs, optionally set page ranges per file (`1-3,7,10`), drag to reorder, name the output (`.pdf` enforced), and click **Merge** to download or stream base64 to the UI. Split: drop one PDF (≤ default limit in `config.yml`), and download all pages or a ZIP. Stitch: upload up to 6 PDFs, give each an alias, and type a line-by-line sequence like `A:1-2\nB:all\nA:end` (stitch accepts `end` as a token) to build a custom composite in a single pass. Metadata: upload one PDF to read page count and size before deciding which workflow to use.
+- **Hydride Segmentation** – Upload a PNG/JPEG/TIFF, pick the **Conventional** or **ML proxy** backend, tune CLAHE/threshold/morphology sliders, and run segmentation. Use the history controls to compare attempts, then download the mask/overlay bundle.
+- **Tabular ML** – Upload a CSV (defaults to ≤2 MB), preview schema, optionally drop outliers or filter rows, choose a target column, select an algorithm, and train. Review metrics/feature importances, then run single-row or batch inference directly in the results panel.
+- **Unit Converter** – Choose a measurement family, enter a numeric value (scientific notation allowed), pick source/destination units, and copy the four-decimal result. Use **Reset** when switching categories.
+- **Crystallographic Tools** – Load a CIF, adjust lattice parameters or sites, and download the edited CIF. For diffraction, choose an XRD radiation type and 2θ window to return peak tables; for SAED/TEM, set accelerating voltage and camera length to compute spot positions and intensities. All calculations are in-memory and offline.
+
 ### Unified activity window
 
 A docked activity window now appears at the bottom of every page. It auto-expands whenever a tool posts a message—upload limits, validation errors, or long-running jobs such as segmentation and PDF splitting. Typical events include:
