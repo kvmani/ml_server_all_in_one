@@ -1,3 +1,5 @@
+import pytest
+
 from app import create_app
 
 
@@ -62,4 +64,33 @@ def test_invalid_request_returns_error():
     assert resp.status_code == 400
     data = resp.get_json()
     assert data["success"] is False
+
+
+def test_composition_elements_endpoint():
+    client = _client()
+    resp = client.get("/api/scientific_calculator/composition/elements")
+    assert resp.status_code == 200
+    payload = resp.get_json()["data"]
+    symbols = {item["symbol"] for item in payload["elements"]}
+    assert {"Al", "Fe", "B"}.issubset(symbols)
+
+
+def test_composition_convert_endpoint():
+    client = _client()
+    resp = client.post(
+        "/api/scientific_calculator/composition/convert",
+        json={
+            "mode": "mass_to_atomic",
+            "elements": [
+                {"symbol": "Al", "role": "normal", "input_percent": 10},
+                {"symbol": "B", "role": "normal", "input_percent": 20},
+                {"symbol": "Fe", "role": "balance"},
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()["data"]
+    assert pytest.approx(payload["input_sum"], rel=1e-6) == 100
+    outputs = {item["symbol"]: item["output_percent"] for item in payload["elements"]}
+    assert outputs["B"] > outputs["Fe"] > outputs["Al"]
 

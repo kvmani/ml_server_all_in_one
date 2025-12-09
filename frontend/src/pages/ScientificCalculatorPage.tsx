@@ -37,6 +37,30 @@ type PlotResponse =
 
 type VariableState = { name: string; start: string; stop: string; step: string };
 
+type CompositionMode = "mass_to_atomic" | "atomic_to_mass";
+type CompositionElementState = {
+  symbol: string;
+  role: "normal" | "balance";
+  inputPercent: string;
+  outputPercent?: number;
+  atomicWeight?: number;
+  id: string;
+  isValidSymbol?: boolean;
+};
+
+type CompositionResult = {
+  elements: {
+    symbol: string;
+    role: "normal" | "balance";
+    input_percent: number;
+    output_percent: number;
+    atomic_weight: number;
+  }[];
+  input_sum: number;
+  output_sum: number;
+  warnings: string[];
+};
+
 function parseKeyValues(raw: string): Record<string, number> {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -64,13 +88,29 @@ function parseFloatSafe(value: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function normalizeSymbol(value: string): string {
+  if (!value) return "";
+  if (value.length === 1) return value.toUpperCase();
+  return `${value[0].toUpperCase()}${value.slice(1).toLowerCase()}`;
+}
+
+function parsePercentValue(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) {
+    throw new Error("Percent values must be numeric");
+  }
+  return parsed;
+}
+
 export default function ScientificCalculatorPage() {
   const pluginConfig = usePluginSettings<{ docs?: string }>("scientific_calculator", {});
   const helpHref = typeof pluginConfig.docs === "string" ? pluginConfig.docs : "/help/scientific_calculator";
   const { withLoader } = useLoading();
 
   const [angleUnit, setAngleUnit] = useState<"radian" | "degree">("radian");
-  const [activeTab, setActiveTab] = useState<"evaluate" | "plot">("evaluate");
+  const [activeTab, setActiveTab] = useState<"evaluate" | "plot" | "composition">("evaluate");
 
   // Evaluate tab state
   const [expression, setExpression] = useState<string>("3*4+5");
@@ -91,6 +131,30 @@ export default function ScientificCalculatorPage() {
 
   const activeVariables = useMemo(() => variables.slice(0, variableCount), [variables, variableCount]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Composition converter state
+  const [compositionMode, setCompositionMode] = useState<CompositionMode>("mass_to_atomic");
+  const [compositionElements, setCompositionElements] = useState<CompositionElementState[]>([
+    { symbol: "Al", role: "normal", inputPercent: "10", id: "el-1" },
+    { symbol: "B", role: "normal", inputPercent: "20", id: "el-2" },
+    { symbol: "Fe", role: "balance", inputPercent: "", id: "el-3" },
+  ]);
+  const compositionId = useRef(4);
+  const [compositionResult, setCompositionResult] = useState<CompositionResult | null>(null);
+  const [availableSymbols, setAvailableSymbols] = useState<Set<string>>(new Set());
+  const compositionStatus = useStatus({ message: "Enter alloy composition and convert", level: "info" });
+
+  useEffect(() => {
+    withLoader(() => apiFetch<{ elements: { symbol: string }[] }>("/api/scientific_calculator/composition/elements")).then(
+      (payload) => {
+        setAvailableSymbols(new Set(payload.elements.map((item) => item.symbol)));
+      },
+      () => {
+        compositionStatus.setStatus("Could not load element table", "error");
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleEvaluate = async (event: FormEvent) => {
     event.preventDefault();
@@ -142,6 +206,102 @@ export default function ScientificCalculatorPage() {
       setPlotResult(null);
       const message = error instanceof Error ? error.message : "Plotting failed";
       plotStatus.setStatus(message, "error");
+    }
+  };
+
+  const isSymbolAllowed = (symbol: string) => {
+    const normalized = normalizeSymbol(symbol);
+    return !normalized || availableSymbols.has(normalized);
+  };
+
+  const updateCompositionElement = (id: string, changes: Partial<CompositionElementState>) => {
+    setCompositionElements((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              ...changes,
+              isValidSymbol:
+                changes.symbol !== undefined ? isSymbolAllowed(changes.symbol) : item.isValidSymbol ?? isSymbolAllowed(item.symbol),
+            }
+          : item,
+      ),
+    );
+  };
+
+  const addCompositionElement = () => {
+    const nextId = compositionId.current++;
+    setCompositionElements((prev) => [
+      ...prev,
+      { symbol: "", role: "normal", inputPercent: "", id: `el-${nextId}` },
+    ]);
+  };
+
+  const removeCompositionElement = (id: string) => {
+    setCompositionElements((prev) => (prev.length > 1 ? prev.filter((item) => item.id !== id) : prev));
+  };
+
+  const resetComposition = () => {
+    setCompositionElements([
+      { symbol: "Al", role: "normal", inputPercent: "10", id: "el-1", isValidSymbol: true },
+      { symbol: "B", role: "normal", inputPercent: "20", id: "el-2", isValidSymbol: true },
+      { symbol: "Fe", role: "balance", inputPercent: "", id: "el-3", isValidSymbol: true },
+    ]);
+    compositionId.current = 4;
+    setCompositionResult(null);
+    compositionStatus.setStatus("Enter alloy composition and convert", "info");
+  };
+
+  const handleCompositionConvert = async (event: FormEvent) => {
+    event.preventDefault();
+    compositionStatus.setStatus("Converting…", "info");
+    try {
+      const payloadElements = compositionElements.map((item) => {
+        const parsedPercent = parsePercentValue(item.inputPercent);
+        const normalizedSymbol = normalizeSymbol(item.symbol);
+        if (!normalizedSymbol) {
+          throw new Error("Element symbol is required");
+        }
+        if (!isSymbolAllowed(normalizedSymbol)) {
+          throw new Error(`Unknown element symbol: ${normalizedSymbol}`);
+        }
+        return {
+          symbol: normalizedSymbol,
+          role: item.role,
+          input_percent: parsedPercent,
+        };
+      });
+
+      const data = await withLoader(() =>
+        apiFetch<CompositionResult>("/api/scientific_calculator/composition/convert", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: compositionMode, elements: payloadElements }),
+        }),
+      );
+      setCompositionResult(data);
+      setCompositionElements((prev) =>
+        prev.map((item) => {
+          const normalized = normalizeSymbol(item.symbol);
+          const match = data.elements.find((entry) => entry.symbol === normalized);
+          return {
+            ...item,
+            outputPercent: match?.output_percent,
+            atomicWeight: match?.atomic_weight,
+            symbol: normalized,
+            isValidSymbol: true,
+          };
+        }),
+      );
+      if (data.warnings.length) {
+        compositionStatus.setStatus(data.warnings[0], "warning");
+      } else {
+        compositionStatus.setStatus("Conversion complete", "success");
+      }
+    } catch (error) {
+      setCompositionResult(null);
+      const message = error instanceof Error ? error.message : "Conversion failed";
+      compositionStatus.setStatus(message, "error");
     }
   };
 
@@ -279,19 +439,22 @@ export default function ScientificCalculatorPage() {
     URL.revokeObjectURL(url);
   }
 
+  const tabItems: { key: typeof activeTab; label: string }[] = [
+    { key: "evaluate", label: "Evaluate" },
+    { key: "plot", label: "Plot" },
+    { key: "composition", label: "Composition" },
+  ];
+
   const tabs = (
     <div className="sci-tabs" role="tablist" aria-label="Scientific calculator">
-      {[
-        { key: "evaluate", label: "Evaluate" },
-        { key: "plot", label: "Plot" },
-      ].map((tab) => (
+      {tabItems.map((tab) => (
         <button
           key={tab.key}
           type="button"
           role="tab"
           className={activeTab === tab.key ? "sci-tab active" : "sci-tab"}
           aria-selected={activeTab === tab.key}
-          onClick={() => setActiveTab(tab.key as "evaluate" | "plot")}
+          onClick={() => setActiveTab(tab.key)}
         >
           {tab.label}
         </button>
@@ -468,6 +631,146 @@ export default function ScientificCalculatorPage() {
     </section>
   );
 
+  const compositionSection = (
+    <section className="card composition-card">
+      <div className="card-header">
+        <div>
+          <h2>Composition converter</h2>
+          <p className="text-muted">Convert between mass % and atomic % for multi-element alloys.</p>
+        </div>
+        <div className="radio-group">
+          <label>
+            <input
+              type="radio"
+              name="composition-mode"
+              value="mass_to_atomic"
+              checked={compositionMode === "mass_to_atomic"}
+              onChange={() => setCompositionMode("mass_to_atomic")}
+            />
+            Mass% → Atomic%
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="composition-mode"
+              value="atomic_to_mass"
+              checked={compositionMode === "atomic_to_mass"}
+              onChange={() => setCompositionMode("atomic_to_mass")}
+            />
+            Atomic% → Mass%
+          </label>
+        </div>
+      </div>
+      <form className="composition-form" onSubmit={handleCompositionConvert}>
+        <div className="composition-table" role="table" aria-label="Composition rows">
+          <div className="composition-header" role="row">
+            <div role="columnheader">#</div>
+            <div role="columnheader">Element</div>
+            <div role="columnheader">Role</div>
+            <div role="columnheader">Input %</div>
+            <div role="columnheader">Output %</div>
+            <div role="columnheader">Atomic wt.</div>
+            <div role="columnheader">Action</div>
+          </div>
+          {compositionElements.map((item, index) => (
+            <div className="composition-row" role="row" key={item.id}>
+              <div role="cell">{index + 1}</div>
+              <div role="cell" className="composition-cell">
+                <label className="sr-only" htmlFor={`symbol-${item.id}`}>
+                  Element symbol
+                </label>
+                <input
+                  id={`symbol-${item.id}`}
+                  type="text"
+                  value={item.symbol}
+                  onChange={(event) => updateCompositionElement(item.id, { symbol: event.target.value })}
+                  className={item.isValidSymbol === false ? "input-error" : undefined}
+                  placeholder="Al"
+                  required
+                />
+                {item.isValidSymbol === false ? <div className="text-error">Unknown symbol</div> : null}
+              </div>
+              <div role="cell">
+                <label className="sr-only" htmlFor={`role-${item.id}`}>
+                  Role
+                </label>
+                <select
+                  id={`role-${item.id}`}
+                  value={item.role}
+                  onChange={(event) => updateCompositionElement(item.id, { role: event.target.value as "normal" | "balance" })}
+                >
+                  <option value="normal">Normal</option>
+                  <option value="balance">Balance</option>
+                </select>
+              </div>
+              <div role="cell">
+                <label className="sr-only" htmlFor={`input-${item.id}`}>
+                  Input percent
+                </label>
+                <input
+                  id={`input-${item.id}`}
+                  type="number"
+                  step="any"
+                  value={item.inputPercent}
+                  onChange={(event) => updateCompositionElement(item.id, { inputPercent: event.target.value })}
+                  placeholder="e.g., 25"
+                />
+              </div>
+              <div role="cell" className="text-mono">
+                {item.outputPercent !== undefined ? item.outputPercent.toFixed(2) : "—"}
+              </div>
+              <div role="cell" className="text-mono">
+                {item.atomicWeight !== undefined ? item.atomicWeight.toFixed(4) : "—"}
+              </div>
+              <div role="cell">
+                <button
+                  type="button"
+                  className="button ghost"
+                  onClick={() => removeCompositionElement(item.id)}
+                  aria-label={`Remove row ${index + 1}`}
+                  disabled={compositionElements.length === 1}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="button-row">
+          <button type="button" className="button" onClick={addCompositionElement}>
+            + Add element
+          </button>
+          <div className="spacer" />
+          <button type="button" className="button ghost" onClick={resetComposition}>
+            Reset
+          </button>
+          <button type="submit" className="button primary">
+            Convert
+          </button>
+        </div>
+      </form>
+      <StatusMessage status={compositionStatus.status} />
+      {compositionResult ? (
+        <div className="composition-summary">
+          <div className="summary-grid">
+            <div>
+              <p className="label">Input sum</p>
+              <p className="text-large">{compositionResult.input_sum.toFixed(3)}%</p>
+            </div>
+            <div>
+              <p className="label">Output sum</p>
+              <p className="text-large">{compositionResult.output_sum.toFixed(3)}%</p>
+            </div>
+            {compositionResult.warnings.length ? (
+              <div className="summary-warning">{compositionResult.warnings.join(" ")}</div>
+            ) : null}
+          </div>
+          <div className="composition-note text-muted">Outputs are normalized to 100%.</div>
+        </div>
+      ) : null}
+    </section>
+  );
+
   return (
     <ToolShell
       intro={
@@ -492,7 +795,13 @@ export default function ScientificCalculatorPage() {
       workspace={
         <div className="sci-main">
           {tabs}
-          <div className="sci-panel">{activeTab === "evaluate" ? evaluateSection : plotSection}</div>
+          <div className="sci-panel">
+            {activeTab === "evaluate"
+              ? evaluateSection
+              : activeTab === "plot"
+                ? plotSection
+                : compositionSection}
+          </div>
         </div>
       }
     />
