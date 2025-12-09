@@ -6,6 +6,8 @@ Evaluate math expressions offline with degree/radian modes and render canonical 
 
 - `POST /api/scientific_calculator/evaluate` — JSON body with `expression`, optional `variables` dict, and `angle_unit` (`radian`|`degree`). Returns the numeric result, canonicalized expression string, and variables detected.
 - `POST /api/scientific_calculator/plot` — JSON body with `expression`, `variables` (list of ranges), optional `constants`, and `angle_unit`. Returns either a 1D series (`mode: "1d"`) or 2D surface grid (`mode: "2d"`), along with metadata.
+- `GET /api/scientific_calculator/composition/elements` — Returns the available element symbols, atomic numbers, and atomic weights used by the converter.
+- `POST /api/scientific_calculator/composition/convert` — JSON body with `mode` (`mass_to_atomic` | `atomic_to_mass`) and `elements` (`symbol`, `role`, optional `input_percent`). Supports one balance row; outputs normalized percentages and atomic weights.
 
 ## Expression grammar (safe subset)
 
@@ -31,5 +33,6 @@ Evaluate math expressions offline with degree/radian modes and render canonical 
 
 - Tab 1: Expression evaluator with text area, angle-mode radio (degree/radian), live canonical preview, and result box.
 - Tab 2: Function plotter with controls for variable count (1 or 2), per-variable range and step, constants list, and a canvas/chart that switches between line plot (1D) and heatmap/mesh (2D).
+- Tab 3: Composition converter with dynamic rows, inline element validation against the atomic weight table, conversion toggles for Mass%/Atomic%, and normalized summary metrics.
 
 See `specifications.md` for deeper design notes and future enhancements.

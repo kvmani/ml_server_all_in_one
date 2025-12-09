@@ -59,3 +59,130 @@
   margin-top: 0.75rem;
   flex-wrap: wrap;
 }
+
+.composition-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.composition-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.composition-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.composition-header,
+.composition-row {
+  display: grid;
+  grid-template-columns: 0.5fr 1.3fr 1.2fr 1.2fr 1.2fr 1.2fr 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.composition-header {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  color: #cbd5e1;
+}
+
+.composition-row {
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+}
+
+.composition-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.5rem;
+}
+
+.composition-summary {
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  padding-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.summary-warning {
+  background: rgba(250, 204, 21, 0.1);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  color: #facc15;
+  padding: 0.5rem;
+  border-radius: 6px;
+}
+
+.composition-note {
+  font-size: 0.85rem;
+}
+
+.text-error {
+  color: #f87171;
+  font-size: 0.85rem;
+}
+
+.input-error {
+  border-color: #f87171;
+  outline-color: #f87171;
+}
+
+.spacer {
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .composition-header,
+  .composition-row {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-areas:
+      "index element"
+      "role input"
+      "output weight"
+      "action action";
+  }
+  .composition-header div:nth-child(1),
+  .composition-row div:nth-child(1) {
+    grid-area: index;
+  }
+  .composition-header div:nth-child(2),
+  .composition-row div:nth-child(2) {
+    grid-area: element;
+  }
+  .composition-header div:nth-child(3),
+  .composition-row div:nth-child(3) {
+    grid-area: role;
+  }
+  .composition-header div:nth-child(4),
+  .composition-row div:nth-child(4) {
+    grid-area: input;
+  }
+  .composition-header div:nth-child(5),
+  .composition-row div:nth-child(5) {
+    grid-area: output;
+  }
+  .composition-header div:nth-child(6),
+  .composition-row div:nth-child(6) {
+    grid-area: weight;
+  }
+  .composition-header div:nth-child(7),
+  .composition-row div:nth-child(7) {
+    grid-area: action;
+  }
+}
