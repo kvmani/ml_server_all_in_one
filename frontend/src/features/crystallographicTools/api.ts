@@ -11,6 +11,25 @@ export type LatticePayload = {
 
 export type SitePayload = { species: string; frac_coords: number[] };
 
+export type ViewerBasisSite = {
+  element: string;
+  frac_position: number[];
+  frac_coords?: number[];
+  cart_position: number[];
+  occupancy?: number;
+  atomic_number?: number | null;
+  atomic_radius?: number | null;
+};
+
+export type ViewerLimits = {
+  max_atoms: number;
+  supercell_default: number[];
+  supercell_max: number[];
+  supercell_requested: number[];
+  atom_count: number;
+  atom_count_supercell: number;
+};
+
 export type StructurePayload = {
   lattice: LatticePayload;
   sites: SitePayload[];
@@ -19,12 +38,19 @@ export type StructurePayload = {
   formula: string;
   is_hexagonal?: boolean;
   crystal_system?: string;
+  lattice_matrix?: number[][];
+  space_group?: { symbol: string; number: number | null };
+  basis?: ViewerBasisSite[];
+  viewer_limits?: ViewerLimits;
 };
 
-export async function loadCif(file: File): Promise<StructurePayload> {
+export async function loadCif(file: File, options?: { supercell?: number[] }): Promise<StructurePayload> {
   const form = new FormData();
   form.append("file", file, file.name);
-  return apiFetch<StructurePayload>("/api/crystallographic_tools/load_cif", {
+  if (options?.supercell) {
+    form.append("supercell", JSON.stringify(options.supercell));
+  }
+  return apiFetch<StructurePayload>("/api/crystallographic_tools/crystal_viewer/parse", {
     method: "POST",
     body: form,
   });
@@ -41,6 +67,31 @@ export async function editCif(payload: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+}
+
+export async function exportStructure(payload: {
+  cif?: string;
+  poscar?: string;
+  supercell?: number[];
+  filename?: string;
+}): Promise<StructurePayload> {
+  const body: Record<string, unknown> = {
+    cif: payload.cif,
+    poscar: payload.poscar,
+    filename: payload.filename,
+  };
+  if (payload.supercell) {
+    body.supercell = payload.supercell;
+  }
+  return apiFetch<StructurePayload>("/api/crystallographic_tools/crystal_viewer/export_structure", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchElementRadii(): Promise<Record<string, number>> {
+  return apiFetch<Record<string, number>>("/api/crystallographic_tools/crystal_viewer/element_radii");
 }
 
 export type XrdPeak = {

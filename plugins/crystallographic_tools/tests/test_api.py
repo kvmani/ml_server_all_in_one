@@ -100,3 +100,34 @@ def test_calculator_endpoint():
     payload = resp.get_json()["data"]
     assert payload["direction_angle_deg"] == pytest.approx(90.0)
     assert payload["equivalents"]["direction"]["three_index"]
+
+
+def test_crystal_viewer_parse_accepts_poscar(fe_poscar_bytes):
+    client = _client()
+    resp = client.post(
+        "/api/crystallographic_tools/crystal_viewer/parse",
+        data={"file": (BytesIO(fe_poscar_bytes), "POSCAR")},
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()["data"]
+    assert payload["basis"]
+    expected_atoms = payload["viewer_limits"]["atom_count"]
+    sc = payload["viewer_limits"]["supercell_requested"]
+    assert payload["viewer_limits"]["atom_count_supercell"] == expected_atoms * sc[0] * sc[1] * sc[2]
+
+
+def test_crystal_viewer_element_radii():
+    client = _client()
+    resp = client.get("/api/crystallographic_tools/crystal_viewer/element_radii")
+    assert resp.status_code == 200
+    payload = resp.get_json()["data"]
+    assert payload["Fe"] > 0
+
+
+def test_crystal_viewer_export_structure_respects_limits(simple_cif_bytes):
+    client = _client()
+    resp = client.post(
+        "/api/crystallographic_tools/crystal_viewer/export_structure",
+        json={"cif": simple_cif_bytes.decode(), "supercell": [10, 10, 10]},
+    )
+    assert resp.status_code == 400

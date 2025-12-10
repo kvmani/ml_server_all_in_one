@@ -132,8 +132,7 @@ def plane_vector_angle(lattice: Lattice, plane: Sequence[float], direction: Sequ
     d = _cart_direction(lattice, direction)
     cos_theta = float(np.dot(n, d) / (np.linalg.norm(n) * np.linalg.norm(d)))
     cos_theta = min(1.0, max(-1.0, cos_theta))
-    # Plane/direction angle is complementary to normal/direction
-    return abs(90.0 - math.degrees(math.acos(cos_theta)))
+    return math.degrees(math.acos(cos_theta))
 
 
 def symmetry_equivalents(structure: Structure, miller: Sequence[float], *, kind: str) -> list[list[float]]:
