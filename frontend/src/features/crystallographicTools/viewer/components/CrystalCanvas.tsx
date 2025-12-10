@@ -60,13 +60,14 @@ function buildAtoms(
   const [na, nb, nc] = supercell;
   basis.forEach((site) => {
     const frac = site.frac_position || site.frac_coords;
-    const override = elementOverrides?.[site.element];
-    const baseRadius = (site.atomic_radius ?? elementRadii[site.element] ?? 0.6) * atomScale * (override?.scale ?? 1);
+    const symbol = (site.element || "").trim();
+    const override = elementOverrides?.[symbol];
+    const baseRadius = (site.atomic_radius ?? elementRadii[symbol] ?? 0.6) * atomScale * (override?.scale ?? 1);
     const radius = Math.max(minAtomRadius, baseRadius);
     const basePosition = fracToCart(new THREE.Vector3(frac[0], frac[1], frac[2]), vectors);
     const color = new THREE.Color(
-      override?.color ?? (colorMode === "single" ? customColor : elementColor(site.element)),
-    );
+      override?.color ?? (colorMode === "single" ? customColor : elementColor(symbol)),
+    ).convertSRGBToLinear();
     for (let i = 0; i < na; i += 1) {
       for (let j = 0; j < nb; j += 1) {
         for (let k = 0; k < nc; k += 1) {
@@ -246,6 +247,8 @@ export function CrystalCanvas({
     scene.fog = new THREE.Fog(scene.background, 20, 140);
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, context: gl, alpha: true });
+    (renderer as any).outputColorSpace = THREE.SRGBColorSpace;
+    (renderer as any).outputEncoding = THREE.sRGBEncoding;
     renderer.shadowMap.enabled = false;
     const resize = () => {
       const { clientWidth, clientHeight } = container;
@@ -266,7 +269,7 @@ export function CrystalCanvas({
     controls.target.copy(center);
     controls.update();
 
-    scene.add(new THREE.AmbientLight(0xb4c6ef, 0.7));
+    scene.add(new THREE.AmbientLight(0xb4c6ef, 0.85));
     const keyLight = new THREE.DirectionalLight(0x9cccf8, 0.8);
     keyLight.position.set(1.8, 1.2, 2.4);
     scene.add(keyLight);
@@ -304,15 +307,20 @@ export function CrystalCanvas({
         metalness: 0.25,
         roughness: 0.4,
       });
+      material.color.set("#ffffff");
+      material.emissive = new THREE.Color("#0c1020");
+      material.emissiveIntensity = 0.18;
       material.needsUpdate = true;
       const mesh = new THREE.InstancedMesh(geometry, material, atoms.length);
+      const colorArray = new Float32Array(atoms.length * 3);
       atoms.forEach((atom, index) => {
         const matrix = new THREE.Matrix4();
         matrix.makeScale(atom.radius, atom.radius, atom.radius);
         matrix.setPosition(atom.position);
         mesh.setMatrixAt(index, matrix);
-        mesh.setColorAt(index, atom.color);
+        colorArray.set(atom.color.toArray(), index * 3);
       });
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(colorArray, 3);
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) {
         mesh.instanceColor.needsUpdate = true;

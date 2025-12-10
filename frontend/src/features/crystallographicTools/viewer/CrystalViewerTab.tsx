@@ -5,15 +5,17 @@ import PlaneDirectionControls from "./components/PlaneDirectionControls";
 import StructureControls from "./components/StructureControls";
 import AtomTypeSettings from "./components/AtomTypeSettings";
 import type { DirectionConfig, ElementOverrides, PlaneConfig, ViewerSettings } from "./types";
+import type { SampleCif } from "../samples";
 
 type Props = {
   structure: StructurePayload | null;
   supercell: [number, number, number];
   limits?: ViewerLimits;
   elementRadii: Record<string, number>;
+  samples: SampleCif[];
   fileInputRef: React.RefObject<HTMLInputElement>;
   onUploadFile: (file?: File) => void;
-  onLoadSample: () => void;
+  onLoadSample: (sampleId?: string) => void;
   onSupercellChange: (next: [number, number, number]) => void;
   onSendToXrd: () => void;
   onSendToTem: () => void;
@@ -48,6 +50,7 @@ export function CrystalViewerTab({
   supercell,
   limits,
   elementRadii,
+  samples,
   fileInputRef,
   onUploadFile,
   onLoadSample,
@@ -77,12 +80,13 @@ export function CrystalViewerTab({
         structure={structure}
         supercell={supercell}
         limits={limits}
+        samples={samples}
         fileInputRef={fileInputRef}
         onUploadFile={onUploadFile}
-        onLoadSample={() => {
+        onLoadSample={(sampleId?: string) => {
           setPlanes(DEFAULT_PLANES);
           setDirections(DEFAULT_DIRECTIONS);
-          onLoadSample();
+          onLoadSample(sampleId);
         }}
         onSupercellChange={onSupercellChange}
         onSendToXrd={onSendToXrd}
@@ -98,8 +102,8 @@ export function CrystalViewerTab({
           </div>
           <div className="cryst-actions">
             <button className="btn btn--subtle" type="button" onClick={() => setShowAtomSettings((open) => !open)}>
-            ⚙ Atom view properties
-          </button>
+              ⚙ Atom view properties
+            </button>
             <button className="btn btn--subtle" type="button" onClick={() => setCanvasKey((key) => key + 1)}>
               Reset camera
             </button>
@@ -117,7 +121,7 @@ export function CrystalViewerTab({
         />
         {limitWarning ? <div className="cryst-warning">{limitWarning}</div> : null}
         <div className="cryst-viewer__hud cryst-viewer__hud--actions">
-          <button className="btn btn--subtle" type="button" onClick={() => setShowAtomSettings((open) => !open)} aria-label="Atom type settings">
+          <button className="btn btn--subtle" type="button" onClick={() => setShowAtomSettings((open) => !open)} aria-label="Atom view properties">
             ⚙ Atom view properties
           </button>
         </div>

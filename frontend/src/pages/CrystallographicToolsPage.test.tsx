@@ -149,9 +149,11 @@ describe("CrystallographicToolsPage", () => {
             is_hexagonal: false,
             direction_angle_deg: 90,
             plane_vector_angle_deg: 45,
+            plane_plane_angle_deg: 60,
             direction_a: { three_index: [1, 0, 0], four_index: null },
             direction_b: { three_index: [0, 1, 0], four_index: null },
             plane: { three_index: [1, 0, 0], four_index: null },
+            plane_b: { three_index: [1, 1, 0], four_index: null },
             equivalents: { direction: { three_index: [[1, 0, 0]], four_index: [] }, plane: { three_index: [[1, 0, 0]], four_index: [] } },
           }),
         );
@@ -178,14 +180,24 @@ describe("CrystallographicToolsPage", () => {
     await waitFor(() => expect(screen.getByText(/d = 2\.500/)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("tab", { name: /Calculator/i }));
+    fireEvent.change(screen.getByLabelText(/angle mode/i), { target: { value: "dir_dir" } });
     fireEvent.click(screen.getByRole("button", { name: /compute angles/i }));
     await waitFor(() => expect(screen.getByText(/90\.00°/)).toBeInTheDocument());
-    expect(screen.getByText(/45\.00°/)).toBeInTheDocument();
+    expect(screen.queryByText(/45\.00°/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/60\.00°/)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/angle mode/i), { target: { value: "dir_plane" } });
+    fireEvent.click(screen.getByRole("button", { name: /compute angles/i }));
+    await waitFor(() => expect(screen.getByText(/45\.00°/)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/angle mode/i), { target: { value: "plane_plane" } });
+    fireEvent.click(screen.getByRole("button", { name: /compute angles/i }));
+    await waitFor(() => expect(screen.getByText(/60\.00°/)).toBeInTheDocument());
   });
 
   it("loads the Fe sample and pre-fills a [0 0 1] zone axis", async () => {
     const { container } = renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /load fe sample/i }));
+    fireEvent.click(screen.getByRole("button", { name: /load .*sample/i }));
 
     await waitFor(() => expect(screen.getByText("Fe2")).toBeInTheDocument());
 
@@ -243,7 +255,7 @@ describe("CrystallographicToolsPage", () => {
     await waitFor(() => expect(screen.getByText("Mg")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("tab", { name: /Calculator/i }));
-    const [computedField] = screen.getAllByLabelText("t = -(u+v)") as HTMLInputElement[];
-    expect(computedField.value).toBe("-1.000");
+    const [computedField] = screen.getAllByLabelText("Direction A t (derived)") as HTMLInputElement[];
+    expect(computedField.value).toBe("-1");
   });
 });

@@ -202,11 +202,13 @@ def calculator() -> Response:
         dir_b = _extract_vector("direction_b")
         plane = _extract_vector("plane")
         include_equivalents = bool(data.get("include_equivalents", True))
+        plane_b = _extract_vector("plane_b")
         result = calc_core.run_calculations(
             structure,
             direction_a=dir_a,
             direction_b=dir_b,
             plane=plane,
+            plane_b=plane_b,
             include_equivalents=include_equivalents,
         )
     except (ValidationError, ValueError) as exc:

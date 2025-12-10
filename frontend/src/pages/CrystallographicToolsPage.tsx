@@ -33,7 +33,7 @@ import {
   type ViewerLimits,
 } from "../features/crystallographicTools/api";
 import CrystalViewerTab from "../features/crystallographicTools/viewer/CrystalViewerTab";
-import feBccCif from "../features/crystallographicTools/samples/fe_bcc.cif?raw";
+import { SAMPLE_CIFS } from "../features/crystallographicTools/samples";
 import { atomCountForSupercell, clampSupercell } from "../features/crystallographicTools/utils/crystalMath";
 import { downloadBlob } from "../utils/files";
 import "../styles/crystallography.css";
@@ -107,7 +107,9 @@ export default function CrystallographicToolsPage() {
   const [directionA, setDirectionA] = useState<[number, number, number]>([1, 0, 0]);
   const [directionB, setDirectionB] = useState<[number, number, number]>([0, 1, 0]);
   const [plane, setPlane] = useState<[number, number, number]>([1, 0, 0]);
+  const [planeB, setPlaneB] = useState<[number, number, number]>([0, 1, 0]);
   const [includeEquivalents, setIncludeEquivalents] = useState(true);
+  const [angleMode, setAngleMode] = useState<"dir_dir" | "dir_plane" | "plane_plane">("dir_plane");
 
   const status = useStatus({ message: "Upload a CIF or POSCAR to begin", level: "info" }, { context: "Crystallographic Tools" });
   useEffect(() => {
@@ -119,6 +121,7 @@ export default function CrystallographicToolsPage() {
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   const isHexagonal = structure?.is_hexagonal ?? false;
+  const defaultSampleName = SAMPLE_CIFS[0]?.name || "library";
 
   const handleUpload = useCallback(
     async (file?: File) => {
@@ -167,9 +170,14 @@ export default function CrystallographicToolsPage() {
     [status, structure, viewerLimits],
   );
 
-  const handleLoadSample = useCallback(async () => {
+  const handleLoadSample = useCallback(async (sampleId?: string) => {
+    const sample = SAMPLE_CIFS.find((item) => item.id === sampleId) || SAMPLE_CIFS[0];
+    if (!sample) {
+      status.setStatus("No bundled CIFs found. Please upload your own.", "error");
+      return;
+    }
     try {
-      const payload = await withLoader(() => exportStructure({ cif: feBccCif, supercell }));
+      const payload = await withLoader(() => exportStructure({ cif: sample.cif, supercell, filename: `${sample.id}.cif` }));
       const nextSupercell = clampSupercell(payload.viewer_limits?.supercell_requested ?? supercell, payload.viewer_limits?.supercell_max);
       setStructure(payload);
       setViewerLimits(payload.viewer_limits ?? null);
@@ -184,7 +192,7 @@ export default function CrystallographicToolsPage() {
       setCalculator(null);
       setZoneAxis([0, 0, 1]);
       setActiveTab("viewer");
-      status.setStatus("Loaded Fe (bcc) sample", "success");
+      status.setStatus(`Loaded ${sample.name}`, "success");
     } catch (error) {
       status.setStatus(error instanceof Error ? error.message : "Failed to load sample", "error");
     }
@@ -265,18 +273,53 @@ export default function CrystallographicToolsPage() {
 
   const handleCalculator = useCallback(async () => {
     if (!structure) return;
-    const dirAPayload = isHexagonal ? [...directionA, -(directionA[0] + directionA[1])] : directionA;
-    const dirBPayload = isHexagonal ? [...directionB, -(directionB[0] + directionB[1])] : directionB;
-    const planePayload = isHexagonal ? [...plane, -(plane[0] + plane[1])] : plane;
+    const dirAPayload =
+      angleMode !== "plane_plane"
+        ? isHexagonal
+          ? [directionA[0], directionA[1], -(directionA[0] + directionA[1]), directionA[2]]
+          : directionA
+        : undefined;
+    const dirBPayload =
+      angleMode === "dir_dir"
+        ? isHexagonal
+          ? [directionB[0], directionB[1], -(directionB[0] + directionB[1]), directionB[2]]
+          : directionB
+        : undefined;
+    const planePayload =
+      angleMode !== "dir_dir" ? (isHexagonal ? [plane[0], plane[1], -(plane[0] + plane[1]), plane[2]] : plane) : undefined;
+    const planeBPayload =
+      angleMode === "plane_plane"
+        ? isHexagonal
+          ? [planeB[0], planeB[1], -(planeB[0] + planeB[1]), planeB[2]]
+          : planeB
+        : undefined;
+
+    const calculatorPayload: {
+      cif: string;
+      directionA?: number[];
+      directionB?: number[];
+      plane?: number[];
+      planeB?: number[];
+      includeEquivalents?: boolean;
+    } = {
+      cif: cifText || structure.cif,
+      includeEquivalents,
+    };
+    if (dirAPayload) {
+      calculatorPayload.directionA = dirAPayload;
+    }
+    if (dirBPayload) {
+      calculatorPayload.directionB = dirBPayload;
+    }
+    if (planePayload) {
+      calculatorPayload.plane = planePayload;
+    }
+    if (planeBPayload) {
+      calculatorPayload.planeB = planeBPayload;
+    }
     try {
       const result = await withLoader(() =>
-        runCalculator({
-          cif: cifText || structure.cif,
-          directionA: dirAPayload,
-          directionB: dirBPayload,
-          plane: planePayload,
-          includeEquivalents,
-        }),
+        runCalculator(calculatorPayload),
       );
       setCalculator(result);
       status.setStatus("Calculator results updated", "success");
@@ -301,6 +344,14 @@ export default function CrystallographicToolsPage() {
       <input value={value.toFixed(3)} readOnly aria-label={label} />
     </div>
   );
+
+  const formatIndexValue = (value: number) => {
+    const rounded = Math.round(value);
+    if (Math.abs(value - rounded) < 1e-6) return `${rounded}`;
+    return value.toFixed(1);
+  };
+
+  const formatIndexVector = (values: number[]) => values.map(formatIndexValue).join(" ");
 
   return (
     <section className="cryst-page-container surface-block cryst-shell" aria-labelledby="cryst-tools-title">
@@ -346,6 +397,7 @@ export default function CrystallographicToolsPage() {
             supercell={supercell}
             limits={viewerLimits ?? undefined}
             elementRadii={elementRadii}
+            samples={SAMPLE_CIFS}
             fileInputRef={fileInput}
             onUploadFile={handleUpload}
             onLoadSample={handleLoadSample}
@@ -392,7 +444,7 @@ export default function CrystallographicToolsPage() {
                     Upload
                   </button>
                   <button className="btn btn--subtle" type="button" onClick={handleLoadSample}>
-                    Load Fe sample
+                    Load {defaultSampleName} sample
                   </button>
                   <input
                     ref={fileInput}
@@ -683,6 +735,7 @@ export default function CrystallographicToolsPage() {
                         />
                       </label>
                     ))}
+                    {isHexagonal ? renderComputedIndex("t = -(u+v)", -(zoneAxis[0] + zoneAxis[1])) : null}
                     <label className="cryst-label">
                       Voltage (kV)
                       <input type="number" value={voltage} onChange={(e) => setVoltage(Number(e.target.value))} />
@@ -729,6 +782,11 @@ export default function CrystallographicToolsPage() {
                           />
                         ))}
                       </div>
+                      {isHexagonal && xAxis ? (
+                        <p className="muted" aria-live="polite">
+                          i (derived) = {-(xAxis[0] + xAxis[1])}
+                        </p>
+                      ) : null}
                     </label>
                     <label className="cryst-label">
                       In-plane rotation (°)
@@ -776,89 +834,185 @@ export default function CrystallographicToolsPage() {
 
               {activeTab === "calculator" && (
                 <>
-                  <header className="cryst-panel__header">
-                    <div>
-                      <p className="eyebrow">Calculator</p>
-                      <h2>Angles & symmetry equivalents</h2>
-                      {isHexagonal ? <p className="muted">Hexagonal detected — Miller–Bravais helpers enabled.</p> : null}
-                    </div>
-                  </header>
-                  <div className="cryst-grid">
-                    <label className="cryst-label">
-                      Direction A [uvw]
-                      <div className="cryst-inline-inputs">
-                        {["u", "v", "w"].map((label, idx) => (
-                          <input
-                            key={label}
-                            type="number"
-                            value={directionA[idx]}
-                            onChange={(e) => {
-                              const value = Number(e.target.value);
-                              setDirectionA((vec) => {
-                                const next = [...vec] as [number, number, number];
-                                next[idx] = value;
-                                return next;
-                              });
-                            }}
-                            aria-label={`Direction A ${label}`}
-                          />
-                        ))}
-                      </div>
-                      {isHexagonal ? renderComputedIndex("t = -(u+v)", -(directionA[0] + directionA[1])) : null}
-                    </label>
-                    <label className="cryst-label">
-                      Direction B [uvw]
-                      <div className="cryst-inline-inputs">
-                        {["u", "v", "w"].map((label, idx) => (
-                          <input
-                            key={label}
-                            type="number"
-                            value={directionB[idx]}
-                            onChange={(e) => {
-                              const value = Number(e.target.value);
-                              setDirectionB((vec) => {
-                                const next = [...vec] as [number, number, number];
-                                next[idx] = value;
-                                return next;
-                              });
-                            }}
-                            aria-label={`Direction B ${label}`}
-                          />
-                        ))}
-                      </div>
-                      {isHexagonal ? renderComputedIndex("t = -(u+v)", -(directionB[0] + directionB[1])) : null}
-                    </label>
-                    <label className="cryst-label">
-                      Plane (hkl)
-                      <div className="cryst-inline-inputs">
-                        {["h", "k", "l"].map((label, idx) => (
-                          <input
-                            key={label}
-                            type="number"
-                            value={plane[idx]}
-                          onChange={(e) => {
-                            const value = Number(e.target.value);
-                            setPlane((vec) => {
-                              const next = [...vec] as [number, number, number];
-                              next[idx] = value;
-                              return next;
-                            });
-                          }}
-                          aria-label={`Plane ${label}`}
-                        />
-                      ))}
-                      </div>
-                      {isHexagonal ? renderComputedIndex("i = -(h+k)", -(plane[0] + plane[1])) : null}
-                    </label>
-                    <label className="cryst-checkbox">
+              <header className="cryst-panel__header">
+                <div>
+                  <p className="eyebrow">Calculator</p>
+                  <h2>Angles & symmetry equivalents</h2>
+                  {isHexagonal ? <p className="muted">Hexagonal detected — Miller–Bravais helpers enabled.</p> : null}
+                </div>
+              </header>
+              <div className="cryst-grid cryst-grid--two">
+                <label className="cryst-label">
+                  Angle mode
+                  <select value={angleMode} onChange={(e) => setAngleMode(e.target.value as typeof angleMode)}>
+                    <option value="dir_dir">Direction ↔ Direction</option>
+                    <option value="dir_plane">Direction ↔ Plane</option>
+                    <option value="plane_plane">Plane ↔ Plane</option>
+                  </select>
+                </label>
+              </div>
+              <div className="cryst-field-row">
+                {(angleMode === "dir_dir" || angleMode === "dir_plane") && (
+                  <label className="cryst-label">
+                    {angleMode === "dir_dir" ? "Direction 1" : "Direction"}
+                    <div className="cryst-inline-inputs cryst-inline-inputs--compact">
                       <input
-                        type="checkbox"
-                        checked={includeEquivalents}
-                        onChange={(e) => setIncludeEquivalents(e.target.checked)}
+                        type="number"
+                        value={directionA[0]}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setDirectionA(([_, v, w]) => [value, v, w]);
+                        }}
+                        aria-label="Direction A u"
                       />
-                      Include symmetry equivalents
-                    </label>
-                  </div>
+                      <input
+                        type="number"
+                        value={directionA[1]}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setDirectionA(([u, _, w]) => [u, value, w]);
+                        }}
+                        aria-label="Direction A v"
+                      />
+                      {isHexagonal ? (
+                        <input value={-(directionA[0] + directionA[1])} readOnly aria-label="Direction A t (derived)" />
+                      ) : null}
+                      <input
+                        type="number"
+                        value={directionA[2]}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setDirectionA(([u, v, _]) => [u, v, value]);
+                        }}
+                        aria-label="Direction A w"
+                      />
+                    </div>
+                    <p className="muted">{isHexagonal ? "[uvtw]" : "[uvw]"}</p>
+                  </label>
+                )}
+
+                {angleMode === "dir_dir" && (
+                  <label className="cryst-label">
+                    Direction 2
+                    <div className="cryst-inline-inputs cryst-inline-inputs--compact">
+                      <input
+                        type="number"
+                        value={directionB[0]}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setDirectionB(([_, v, w]) => [value, v, w]);
+                        }}
+                        aria-label="Direction B u"
+                      />
+                      <input
+                        type="number"
+                        value={directionB[1]}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setDirectionB(([u, _, w]) => [u, value, w]);
+                        }}
+                        aria-label="Direction B v"
+                      />
+                      {isHexagonal ? (
+                        <input value={-(directionB[0] + directionB[1])} readOnly aria-label="Direction B t (derived)" />
+                      ) : null}
+                      <input
+                        type="number"
+                        value={directionB[2]}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setDirectionB(([u, v, _]) => [u, v, value]);
+                        }}
+                        aria-label="Direction B w"
+                      />
+                    </div>
+                    <p className="muted">{isHexagonal ? "[uvtw]" : "[uvw]"}</p>
+                  </label>
+                )}
+
+                {(angleMode === "dir_plane" || angleMode === "plane_plane") && (
+                  <label className="cryst-label">
+                    {angleMode === "plane_plane" ? "Plane 1" : "Plane"}
+                    <div className="cryst-inline-inputs cryst-inline-inputs--compact">
+                      <input
+                        type="number"
+                        value={plane[0]}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setPlane(([_, k, l]) => [value, k, l]);
+                        }}
+                        aria-label="Plane h"
+                      />
+                      <input
+                        type="number"
+                        value={plane[1]}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setPlane(([h, _, l]) => [h, value, l]);
+                        }}
+                        aria-label="Plane k"
+                      />
+                      {isHexagonal ? <input value={-(plane[0] + plane[1])} readOnly aria-label="Plane i (derived)" /> : null}
+                      <input
+                        type="number"
+                        value={plane[2]}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setPlane(([h, k, _]) => [h, k, value]);
+                        }}
+                        aria-label="Plane l"
+                      />
+                    </div>
+                    <p className="muted">{isHexagonal ? "(hkil)" : "(hkl)"}</p>
+                  </label>
+                )}
+
+                {angleMode === "plane_plane" && (
+                  <label className="cryst-label">
+                    Plane 2
+                    <div className="cryst-inline-inputs cryst-inline-inputs--compact">
+                      <input
+                        type="number"
+                        value={planeB[0]}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setPlaneB(([_, k, l]) => [value, k, l]);
+                        }}
+                        aria-label="Plane B h"
+                      />
+                      <input
+                        type="number"
+                        value={planeB[1]}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setPlaneB(([h, _, l]) => [h, value, l]);
+                        }}
+                        aria-label="Plane B k"
+                      />
+                      {isHexagonal ? <input value={-(planeB[0] + planeB[1])} readOnly aria-label="Plane B i (derived)" /> : null}
+                      <input
+                        type="number"
+                        value={planeB[2]}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setPlaneB(([h, k, _]) => [h, k, value]);
+                        }}
+                        aria-label="Plane B l"
+                      />
+                    </div>
+                    <p className="muted">{isHexagonal ? "(hkil)" : "(hkl)"}</p>
+                  </label>
+                )}
+
+                <label className="cryst-checkbox cryst-checkbox--inline">
+                  <input
+                    type="checkbox"
+                    checked={includeEquivalents}
+                    onChange={(e) => setIncludeEquivalents(e.target.checked)}
+                  />
+                  Include symmetry equivalents
+                </label>
+              </div>
                   <div className="cryst-panel__actions">
                     <button className="btn" type="button" disabled={!structure} onClick={handleCalculator}>
                       Compute angles
@@ -866,25 +1020,37 @@ export default function CrystallographicToolsPage() {
                   </div>
                   {calculator ? (
                     <div className="cryst-calculator">
+                    {angleMode === "dir_dir" && (
                       <div className="cryst-calculator__result">
                         <p className="eyebrow">Angle between directions</p>
                         <p className="cryst-meta__value">
                           {calculator.direction_angle_deg !== null ? `${calculator.direction_angle_deg.toFixed(2)}°` : "—"}
                         </p>
                       </div>
+                    )}
+                    {angleMode === "dir_plane" && (
                       <div className="cryst-calculator__result">
-                        <p className="eyebrow">Plane ∠ Direction A</p>
+                        <p className="eyebrow">Direction ↔ Plane</p>
                         <p className="cryst-meta__value">
                           {calculator.plane_vector_angle_deg !== null ? `${calculator.plane_vector_angle_deg.toFixed(2)}°` : "—"}
                         </p>
                       </div>
+                    )}
+                    {angleMode === "plane_plane" && (
+                      <div className="cryst-calculator__result">
+                        <p className="eyebrow">Angle between planes</p>
+                        <p className="cryst-meta__value">
+                          {calculator.plane_plane_angle_deg !== null ? `${calculator.plane_plane_angle_deg.toFixed(2)}°` : "—"}
+                        </p>
+                      </div>
+                    )}
                       <div className="cryst-list">
                         <div className="cryst-list__header">Equivalent directions</div>
                         {(equivalents?.direction.three_index || []).slice(0, 12).map((hkl, idx) => (
                           <div key={idx} className="cryst-list__row">
                             <div className="badge">{hkl.join(" ")}</div>
                             {isHexagonal && equivalents?.direction.four_index?.[idx] ? (
-                              <div className="cryst-list__meta">[uvtw] {equivalents.direction.four_index[idx].map((v) => v.toFixed(2)).join(" ")}</div>
+                              <div className="cryst-list__meta">[uvtw] {formatIndexVector(equivalents.direction.four_index[idx])}</div>
                             ) : null}
                           </div>
                         ))}
@@ -895,14 +1061,14 @@ export default function CrystallographicToolsPage() {
                           <div key={idx} className="cryst-list__row">
                             <div className="badge">{hkl.join(" ")}</div>
                             {isHexagonal && equivalents?.plane.four_index?.[idx] ? (
-                              <div className="cryst-list__meta">(hkli) {equivalents.plane.four_index[idx].map((v) => v.toFixed(2)).join(" ")}</div>
+                              <div className="cryst-list__meta">(hkli) {formatIndexVector(equivalents.plane.four_index[idx])}</div>
                             ) : null}
                           </div>
                         ))}
                       </div>
                     </div>
                   ) : (
-                    <p className="muted">Enter directions and a plane to compute angles and symmetry equivalents.</p>
+                    <p className="muted">Enter directions and planes to compute angles and symmetry equivalents.</p>
                   )}
                 </>
               )}

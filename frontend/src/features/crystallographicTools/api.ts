@@ -229,9 +229,11 @@ export type CalculatorResult = {
   is_hexagonal: boolean;
   direction_angle_deg: number | null;
   plane_vector_angle_deg: number | null;
+  plane_plane_angle_deg: number | null;
   direction_a: { three_index: number[] | null; four_index: number[] | null };
   direction_b: { three_index: number[] | null; four_index: number[] | null };
   plane: { three_index: number[] | null; four_index: number[] | null };
+  plane_b: { three_index: number[] | null; four_index: number[] | null };
   equivalents: {
     direction: { three_index: number[][]; four_index?: number[][] };
     plane: { three_index: number[][]; four_index?: number[][] };
@@ -243,6 +245,7 @@ export async function runCalculator(payload: {
   directionA?: number[];
   directionB?: number[];
   plane?: number[];
+  planeB?: number[];
   includeEquivalents?: boolean;
 }): Promise<CalculatorResult> {
   const body: Record<string, unknown> = {
@@ -257,6 +260,9 @@ export async function runCalculator(payload: {
   }
   if (payload.plane) {
     body.plane = payload.plane;
+  }
+  if (payload.planeB) {
+    body.plane_b = payload.planeB;
   }
 
   return apiFetch<CalculatorResult>("/api/crystallographic_tools/calculator", {

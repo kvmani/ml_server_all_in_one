@@ -1,0 +1,75 @@
+
+#(C) 2020 by FIZ Karlsruhe - Leibniz Institute for Information Infrastructure.  All rights reserved.
+data_644155-ICSD
+_database_code_ICSD 644155
+_audit_creation_date 2012-08-01
+_audit_update_record 2020-02-01
+_chemical_name_common 'Molybdenum platinum (1/2)'
+_chemical_formula_structural 'Mo Pt2'
+_chemical_formula_sum 'Mo1 Pt2'
+_chemical_name_structure_type MoPt2
+_exptl_crystal_density_diffrn 17.97
+_citation_title
+'Phase equilibria and superconductivity in the molybdenum-platinum system'
+_publ_section_comment 'Cell and Type only determined'
+loop_
+_citation_id
+_citation_journal_full
+_citation_year
+_citation_journal_volume
+_citation_page_first
+_citation_page_last
+_citation_journal_id_ASTM
+primary 'Journal of the Less-Common Metals' 1968 15 193 199 JCOMAH
+loop_
+_citation_author_citation_id
+_citation_author_name
+primary 'Ocken, H.'
+primary 'van Vucht, J.H.N.'
+_cell_length_a 2.758
+_cell_length_b 8.27
+_cell_length_c 3.94
+_cell_angle_alpha 90.
+_cell_angle_beta 90.
+_cell_angle_gamma 90.
+_cell_volume 89.87
+_cell_formula_units_Z 2
+_space_group_name_H-M_alt 'I m m m'
+_space_group_IT_number 71
+loop_
+_space_group_symop_id
+_space_group_symop_operation_xyz
+1 'x, y, -z'
+2 'x, -y, z'
+3 '-x, y, z'
+4 '-x, -y, -z'
+5 '-x, -y, z'
+6 '-x, y, -z'
+7 'x, -y, -z'
+8 'x, y, z'
+9 'x+1/2, y+1/2, -z+1/2'
+10 'x+1/2, -y+1/2, z+1/2'
+11 '-x+1/2, y+1/2, z+1/2'
+12 '-x+1/2, -y+1/2, -z+1/2'
+13 '-x+1/2, -y+1/2, z+1/2'
+14 '-x+1/2, y+1/2, -z+1/2'
+15 'x+1/2, -y+1/2, -z+1/2'
+16 'x+1/2, y+1/2, z+1/2'
+loop_
+_atom_type_symbol
+_atom_type_oxidation_number
+Mo0+ 0
+Pt0+ 0
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_symmetry_multiplicity
+_atom_site_Wyckoff_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_B_iso_or_equiv
+_atom_site_occupancy
+Mo1 Mo0+ 2 a 0 0 0 . 1.
+Pt1 Pt0+ 4 g 0 0.353 0 . 1.
+#End of TTdata_644155-ICSD

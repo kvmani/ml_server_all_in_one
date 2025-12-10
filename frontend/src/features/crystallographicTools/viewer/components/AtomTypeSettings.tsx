@@ -10,7 +10,7 @@ type Props = {
 };
 
 export function AtomTypeSettings({ elements, overrides, onChange, onClose }: Props) {
-  const sortedElements = useMemo(() => elements.slice().sort(), [elements]);
+  const sortedElements = useMemo(() => Array.from(new Set(elements)).sort(), [elements]);
 
   const updateElement = (element: string, partial: Partial<{ color: string; scale: number }>) => {
     const current = overrides[element] || { color: elementColor(element), scale: 1 };

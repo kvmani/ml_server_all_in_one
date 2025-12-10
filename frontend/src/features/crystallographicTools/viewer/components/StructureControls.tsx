@@ -1,14 +1,16 @@
-import { useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { StructurePayload, ViewerLimits } from "../../api";
 import { clampSupercell, atomCountForSupercell } from "../../utils/crystalMath";
+import type { SampleCif } from "../../samples";
 
 type Props = {
   structure: StructurePayload | null;
   supercell: [number, number, number];
   limits?: ViewerLimits;
+  samples: SampleCif[];
   fileInputRef: React.RefObject<HTMLInputElement>;
   onUploadFile: (file?: File) => void;
-  onLoadSample: () => void;
+  onLoadSample: (sampleId?: string) => void;
   onSupercellChange: (next: [number, number, number]) => void;
   onSendToXrd: () => void;
   onSendToTem: () => void;
@@ -27,6 +29,7 @@ export function StructureControls({
   structure,
   supercell,
   limits,
+  samples,
   fileInputRef,
   onUploadFile,
   onLoadSample,
@@ -38,6 +41,8 @@ export function StructureControls({
   const baseAtoms = limits?.atom_count ?? structure?.num_sites ?? 0;
   const atomCount = atomCountForSupercell(baseAtoms, supercell);
   const maxSupercell = limits?.supercell_max ?? [4, 4, 4];
+  const [sampleQuery, setSampleQuery] = useState("");
+  const [selectedSample, setSelectedSample] = useState("");
 
   const handleDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
@@ -61,6 +66,17 @@ export function StructureControls({
     [maxSupercell, onSupercellChange, supercell],
   );
 
+  const filteredSamples = useMemo(() => {
+    const query = sampleQuery.trim().toLowerCase();
+    if (!query) return samples;
+    return samples.filter((sample) => {
+      const haystack = `${sample.id} ${sample.name} ${sample.formula}`.toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [sampleQuery, samples]);
+
+  const sampleLabel = samples[0]?.name ? `Load ${samples[0].name} sample` : "Load sample";
+
   return (
     <div className="cryst-viewer__panel">
       <header className="cryst-panel__header">
@@ -73,11 +89,49 @@ export function StructureControls({
           <button className="btn" type="button" onClick={() => fileInputRef.current?.click()}>
             Upload
           </button>
-          <button className="btn btn--subtle" type="button" onClick={onLoadSample}>
-            Load Fe sample
+          <button className="btn btn--subtle" type="button" onClick={() => onLoadSample()}>
+            {sampleLabel}
           </button>
         </div>
       </header>
+
+      {samples.length ? (
+        <div className="cryst-stack">
+          <p className="eyebrow">Library CIFs</p>
+          <label className="cryst-label">
+            Search library
+            <input
+              type="search"
+              value={sampleQuery}
+              onChange={(event) => setSampleQuery(event.target.value)}
+              placeholder="Fe, Si, hex..."
+            />
+          </label>
+          <label className="cryst-label">
+            Choose a CIF from the bundled library
+            <select
+              value={selectedSample}
+              onChange={(event) => {
+                const value = event.target.value;
+                setSelectedSample(value);
+                if (value) {
+                  onLoadSample(value);
+                }
+              }}
+            >
+              <option value="" disabled>
+                Select a CIF
+              </option>
+              {filteredSamples.map((sample) => (
+                <option key={sample.id} value={sample.id}>{`${sample.name} (${sample.formula})`}</option>
+              ))}
+            </select>
+            <p className="muted" aria-live="polite">
+              {filteredSamples.length} in library
+            </p>
+          </label>
+        </div>
+      ) : null}
 
       <div
         className="cryst-dropzone"

@@ -135,6 +135,16 @@ def plane_vector_angle(lattice: Lattice, plane: Sequence[float], direction: Sequ
     return math.degrees(math.acos(cos_theta))
 
 
+def plane_plane_angle(lattice: Lattice, plane_a: Sequence[float], plane_b: Sequence[float]) -> float:
+    """Return the angle (deg) between two planes via their normals."""
+
+    n_a = _cart_plane_normal(lattice, plane_a)
+    n_b = _cart_plane_normal(lattice, plane_b)
+    cos_theta = float(np.dot(n_a, n_b) / (np.linalg.norm(n_a) * np.linalg.norm(n_b)))
+    cos_theta = min(1.0, max(-1.0, cos_theta))
+    return math.degrees(math.acos(cos_theta))
+
+
 def symmetry_equivalents(structure: Structure, miller: Sequence[float], *, kind: str) -> list[list[float]]:
     """Return symmetry-equivalent directions or planes using space group ops."""
 
@@ -161,6 +171,7 @@ def run_calculations(
     direction_a: Sequence[float] | None,
     direction_b: Sequence[float] | None,
     plane: Sequence[float] | None,
+    plane_b: Sequence[float] | None = None,
     include_equivalents: bool = True,
 ) -> dict:
     """Aggregate calculator outputs for the API."""
@@ -171,9 +182,13 @@ def run_calculations(
     dir_a = direction_four_to_three(direction_a) if direction_a is not None else None  # type: ignore[arg-type]
     dir_b = direction_four_to_three(direction_b) if direction_b is not None else None  # type: ignore[arg-type]
     plane_vals = plane_four_to_three(plane) if plane is not None else None  # type: ignore[arg-type]
+    plane_b_vals = plane_four_to_three(plane_b) if plane_b is not None else None  # type: ignore[arg-type]
 
     direction_angle = angle_between_directions(lattice, dir_a, dir_b) if dir_a is not None and dir_b is not None else None
     plane_angle = plane_vector_angle(lattice, plane_vals, dir_a) if plane_vals is not None and dir_a is not None else None
+    plane_plane_angle_deg = (
+        plane_plane_angle(lattice, plane_vals, plane_b_vals) if plane_vals is not None and plane_b_vals is not None else None
+    )
 
     equivalents: dict[str, dict[str, list[list[float]]]] = {"direction": {"three_index": []}, "plane": {"three_index": []}}
     if include_equivalents:
@@ -207,6 +222,11 @@ def run_calculations(
             "three_index": plane_vals,
             "four_index": plane_three_to_four(plane_vals) if plane_vals is not None and hex_lattice else None,
         },
+        "plane_b": {
+            "three_index": plane_b_vals,
+            "four_index": plane_three_to_four(plane_b_vals) if plane_b_vals is not None and hex_lattice else None,
+        },
+        "plane_plane_angle_deg": plane_plane_angle_deg,
         "equivalents": equivalents,
     }
     return response
@@ -215,6 +235,7 @@ def run_calculations(
 __all__ = [
     "angle_between_directions",
     "plane_vector_angle",
+    "plane_plane_angle",
     "direction_four_to_three",
     "direction_three_to_four",
     "plane_four_to_three",

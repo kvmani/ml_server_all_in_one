@@ -127,6 +127,9 @@ export function PlaneDirectionControls({
                   aria-label={`Plane ${axis.toUpperCase()}`}
                 />
               ))}
+              {isHexagonal ? (
+                <input value={-(plane.h + plane.k)} readOnly aria-label="Plane i (derived)" />
+              ) : null}
               <input
                 type="color"
                 aria-label="Plane color"
@@ -162,6 +165,7 @@ export function PlaneDirectionControls({
 
       <div className="cryst-stack">
         <p className="eyebrow">Directions [uvw]</p>
+        {isHexagonal ? <p className="muted">Hexagonal helper: t = -(u+v) is derived for [uvtw]; w stays editable.</p> : null}
         {directions.map((direction, index) => (
           <div key={direction.id} className="cryst-plane">
             <div className="cryst-inline-inputs">
@@ -174,6 +178,7 @@ export function PlaneDirectionControls({
                   aria-label={`Direction ${axis}`}
                 />
               ))}
+              {isHexagonal ? <input value={-(direction.u + direction.v)} readOnly aria-label="Direction t (derived)" /> : null}
               <input
                 type="color"
                 aria-label="Direction color"
