@@ -35,43 +35,39 @@ export default function PdfToolsPage() {
                 Read PDF guide
               </a>
             }
-            footer={
-              <div className="surface-muted">
-                <div className="pdf-tabs" role="tablist">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeTab === "merge"}
-                    className={activeTab === "merge" ? "is-active" : ""}
-                    onClick={() => setActiveTab("merge")}
-                  >
-                    Merge
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeTab === "split"}
-                    className={activeTab === "split" ? "is-active" : ""}
-                    onClick={() => setActiveTab("split")}
-                  >
-                    Split
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeTab === "stitch"}
-                    className={activeTab === "stitch" ? "is-active" : ""}
-                    onClick={() => setActiveTab("stitch")}
-                  >
-                    Stitch
-                  </button>
-                </div>
-              </div>
-            }
           />
         }
         workspace={
           <div className="tool-shell__workspace">
+            <div className="pdf-tabs" role="tablist" aria-label="PDF tools">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "merge"}
+                className={`pdf-tab ${activeTab === "merge" ? "is-active" : ""}`}
+                onClick={() => setActiveTab("merge")}
+              >
+                Merge
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "split"}
+                className={`pdf-tab ${activeTab === "split" ? "is-active" : ""}`}
+                onClick={() => setActiveTab("split")}
+              >
+                Split
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "stitch"}
+                className={`pdf-tab ${activeTab === "stitch" ? "is-active" : ""}`}
+                onClick={() => setActiveTab("stitch")}
+              >
+                Stitch
+              </button>
+            </div>
             <div role="tabpanel" hidden={activeTab !== "merge"}>
               {activeTab === "merge" && <MergePanel />}
             </div>

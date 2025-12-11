@@ -33,6 +33,14 @@ class PdfMetadata:
     size_bytes: int
 
 
+@dataclass(frozen=True)
+class SplitTask:
+    """Split configuration describing a named slice of pages."""
+
+    name: str
+    page_range: str = "all"
+
+
 def merge_pdfs(specs: Iterable[MergeSpec]) -> bytes:
     writer = PdfWriter()
     for spec in specs:
@@ -57,6 +65,21 @@ def split_pdf(stream: bytes) -> List[bytes]:
     return outputs
 
 
+def split_pdf_custom(stream: bytes, tasks: Iterable[SplitTask]) -> List[tuple[str, bytes]]:
+    reader = PdfReader(BytesIO(stream))
+    total_pages = len(reader.pages)
+    outputs: List[tuple[str, bytes]] = []
+    for task in tasks:
+        pages = parse_page_range(task.page_range, total_pages)
+        writer = PdfWriter()
+        for page_num in pages:
+            writer.add_page(reader.pages[page_num - 1])
+        buf = BytesIO()
+        writer.write(buf)
+        outputs.append((task.name, buf.getvalue()))
+    return outputs
+
+
 def pdf_metadata(data: bytes) -> PdfMetadata:
     reader = PdfReader(BytesIO(data))
     return PdfMetadata(pages=len(reader.pages), size_bytes=len(data))
@@ -67,10 +90,12 @@ __all__ = [
     "PdfMetadata",
     "merge_pdfs",
     "split_pdf",
+    "split_pdf_custom",
     "pdf_metadata",
     "PageRangeError",
     "parse_page_range",
     "StitchItem",
+    "SplitTask",
     "StitchError",
     "PageSequenceError",
     "parse_page_sequence",

@@ -1,5 +1,6 @@
 import base64
 import json
+import zipfile
 from io import BytesIO
 
 from PyPDF2 import PdfWriter
@@ -68,7 +69,70 @@ def test_split_endpoint_returns_pages():
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["success"] is True
-    assert len(payload["data"]["pages"]) == 2
+    data_payload = payload["data"]
+    assert data_payload["page_count"] == 2
+    assert len(data_payload["files"]) == 2
+    assert data_payload["files"][0]["name"].endswith(".pdf")
+    assert len(data_payload["pages"]) == 2
+
+
+def test_split_accepts_custom_plan_and_names():
+    client = _make_client()
+    plan = [
+        {"name": "split-1.pdf", "pages": "1-2"},
+        {"name": "tail.pdf", "pages": "3"},
+    ]
+    data = {
+        "file": (BytesIO(_dummy_pdf(3)), "sample.pdf"),
+        "plan": json.dumps(plan),
+    }
+    response = client.post(
+        "/api/pdf_tools/split", data=data, content_type="multipart/form-data"
+    )
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    assert payload["page_count"] == 3
+    assert [item["name"] for item in payload["files"]] == ["split-1.pdf", "tail.pdf"]
+    assert all(item["pdf_base64"] for item in payload["files"])
+
+
+def test_split_rejects_out_of_range_plan():
+    client = _make_client()
+    plan = [{"name": "broken.pdf", "pages": "5-6"}]
+    data = {
+        "file": (BytesIO(_dummy_pdf(2)), "sample.pdf"),
+        "plan": json.dumps(plan),
+    }
+    response = client.post(
+        "/api/pdf_tools/split", data=data, content_type="multipart/form-data"
+    )
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "pdf.invalid_page_range"
+
+
+def test_split_download_zip_uses_custom_names():
+    client = _make_client()
+    plan = [
+        {"name": "alpha.pdf", "pages": "1"},
+        {"name": "beta.pdf", "pages": "2"},
+    ]
+    data = {
+        "file": (BytesIO(_dummy_pdf(2)), "sample.pdf"),
+        "plan": json.dumps(plan),
+    }
+    response = client.post(
+        "/api/pdf_tools/split?download=1",
+        data=data,
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 200
+    buffer = BytesIO(response.data)
+    with zipfile.ZipFile(buffer, "r") as zf:
+        names = set(zf.namelist())
+    assert "alpha.pdf" in names
+    assert "beta.pdf" in names
 
 
 def test_merge_respects_file_limit():

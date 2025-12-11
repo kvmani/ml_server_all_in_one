@@ -349,6 +349,153 @@
   margin-top: 0.5rem;
 }
 
+.split-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.split-panel__meta {
+  margin: 0.35rem 0 0;
+  color: var(--color-muted);
+}
+
+.split-mode {
+  display: inline-flex;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  background: rgba(8, 12, 26, 0.45);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.split-mode button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-muted);
+  padding: 0.45rem 0.85rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: all 0.2s ease;
+}
+
+.split-mode button.is-active {
+  background: rgba(99, 213, 255, 0.14);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.split-meta {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.split-meta__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  background: rgba(8, 12, 26, 0.45);
+}
+
+.split-meta__filename {
+  font-weight: 700;
+}
+
+.split-meta__pages {
+  color: var(--color-muted);
+  font-size: 0.95rem;
+}
+
+.split-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.split-toggle input {
+  accent-color: var(--color-primary);
+  width: 1rem;
+  height: 1rem;
+}
+
+.split-custom {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  background: rgba(17, 28, 51, 0.35);
+}
+
+.split-custom__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.split-custom__rows {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.split-custom__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.split-custom__row {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: end;
+  border: 1px solid var(--color-border);
+  background: rgba(8, 12, 26, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+}
+
+.split-custom__row.has-error {
+  border-color: var(--color-danger);
+}
+
+.split-custom__field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.split-custom__field input {
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: rgba(8, 12, 26, 0.4);
+  color: var(--color-text);
+}
+
+.form-error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 0.9rem;
+}
+
+.split-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 0.5rem;
+}
+
 .split-results {
   display: grid;
   gap: 0.75rem;
@@ -363,13 +510,22 @@
 }
 
 .split-results li {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  background: rgba(8, 12, 26, 0.4);
+}
+
+.split-results__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .split-results button {
-  width: 100%;
+  width: auto;
 }
 
 @media (max-width: 720px) {
@@ -391,56 +547,51 @@
 /* Tabbed Interface Styling */
 .pdf-tabs {
   display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  border-bottom: 2px solid var(--color-border);
-  padding: 0 1rem;
-  margin-top: 1rem;
+  gap: 0.4rem;
+  padding: 0.4rem;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9));
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
 }
 
-.pdf-tabs button {
-  appearance: none;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 6px 6px 0 0;
-  color: var(--color-muted);
+.pdf-tab {
+  flex: 1;
+  padding: 0.65rem 0.75rem;
+  background: rgba(17, 28, 51, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  color: inherit;
+  font-weight: 700;
   cursor: pointer;
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  padding: 0.75rem 1.25rem;
-  position: relative;
-  text-transform: uppercase;
   transition: all 0.2s ease;
+  text-align: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.pdf-tabs button:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--color-text);
+.pdf-tab:hover {
+  border-color: rgba(59, 130, 246, 0.6);
+  color: #e2e8f0;
 }
 
-.pdf-tabs button.is-active {
-  background: var(--color-surface, #1e293b);
-  border-color: var(--color-border);
-  border-bottom: 2px solid var(--color-surface, #1e293b);
-  color: var(--color-accent, #38bdf8);
-  margin-bottom: -2px;
-  padding-bottom: calc(0.75rem + 2px);
-  z-index: 1;
+.pdf-tab.is-active {
+  background: linear-gradient(135deg, #0ea5e9, #1d4ed8);
+  color: #e2e8f0;
+  border-color: rgba(14, 165, 233, 0.8);
+  box-shadow: 0 6px 18px rgba(14, 165, 233, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
-.pdf-tabs button:focus-visible {
+.pdf-tab:focus-visible {
   outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
+  outline-offset: 2px;
 }
 
-/* Ensure the workspace has a matching background/border if needed */
+/* Ensure the workspace has a matching background/border */
 .tool-shell__workspace {
   background: var(--color-surface, #1e293b);
   border: 1px solid var(--color-border);
-  border-top: none;
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
-  padding: 1.5rem;
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  display: grid;
+  gap: 1.25rem;
 }

@@ -9,6 +9,7 @@ from io import BytesIO
 from typing import Iterable
 
 from flask import Blueprint, Response, current_app, request, send_file
+from pydantic import Field
 
 from common.errors import AppError, ValidationAppError
 from common.io import secure_filename
@@ -26,10 +27,12 @@ from ..core import (
     MergeSpec,
     PageRangeError,
     PageSequenceError,
+    SplitTask,
     StitchItem,
     merge_pdfs,
     pdf_metadata,
     split_pdf,
+    split_pdf_custom,
     stitch_pdfs,
 )
 
@@ -43,6 +46,15 @@ class MergeItem(SchemaModel):
 class MergePayload(SchemaModel):
     manifest: list[MergeItem]
     output_name: str | None = None
+
+
+class SplitPlanItem(SchemaModel):
+    name: str = Field(min_length=1)
+    pages: str = Field(min_length=1)
+
+
+class SplitRequest(SchemaModel):
+    plan: list[SplitPlanItem] | None = None
 
 
 def _merge_limit() -> FileLimit:
@@ -187,12 +199,73 @@ def split() -> Response:
             )
         )
 
-    parts = split_pdf(file.read())
+    data = file.read()
+    try:
+        meta = pdf_metadata(data)
+    except Exception:  # pragma: no cover - defensive
+        return fail(AppError(code="pdf.metadata_error", message="Unable to read PDF"))
+
+    raw_plan = request.form.get("plan")
+    plan_items: list[SplitPlanItem] | None = None
+    if raw_plan:
+        try:
+            plan_payload = json.loads(raw_plan)
+        except json.JSONDecodeError as exc:
+            return fail(
+                ValidationAppError(
+                    message="Invalid split plan",
+                    code="pdf.invalid_split_plan",
+                    details={"error": str(exc)},
+                )
+            )
+        try:
+            parsed = parse_model(SplitRequest, {"plan": plan_payload})
+        except ValidationError as exc:
+            return fail(
+                ValidationAppError(
+                    message=str(exc),
+                    code="pdf.invalid_split_plan",
+                    details=getattr(exc, "details", None),
+                )
+            )
+        plan_items = parsed.plan or []
+        if not plan_items:
+            return fail(
+                ValidationAppError(
+                    message="Split plan cannot be empty", code="pdf.invalid_split_plan"
+                )
+            )
+
+    try:
+        if plan_items:
+            tasks: list[SplitTask] = []
+            seen: set[str] = set()
+            for item in plan_items:
+                safe_name = secure_filename(item.name) or "split"
+                if not safe_name.lower().endswith(".pdf"):
+                    safe_name = f"{safe_name}.pdf"
+                key = safe_name.lower()
+                if key in seen:
+                    raise ValidationAppError(
+                        message="Duplicate split output names",
+                        code="pdf.duplicate_split_name",
+                    )
+                seen.add(key)
+                tasks.append(SplitTask(name=safe_name, page_range=item.pages))
+            outputs = split_pdf_custom(data, tasks)
+        else:
+            parts = split_pdf(data)
+            outputs = [(f"page-{idx}.pdf", part) for idx, part in enumerate(parts, start=1)]
+    except PageRangeError as exc:
+        return fail(ValidationAppError(message=str(exc), code="pdf.invalid_page_range"))
+    except ValidationAppError as exc:
+        return fail(exc)
+
     if _download_requested():
         zip_buf = BytesIO()
         with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for idx, part in enumerate(parts, start=1):
-                zf.writestr(f"page-{idx}.pdf", part)
+            for name, content in outputs:
+                zf.writestr(name, content)
         zip_buf.seek(0)
         return send_file(
             zip_buf,
@@ -201,9 +274,14 @@ def split() -> Response:
             download_name="split_pages.zip",
             max_age=0,
         )
+    files_payload = [
+        {"name": name, "pdf_base64": base64.b64encode(content).decode("ascii")}
+        for name, content in outputs
+    ]
     payload = {
-        "pages": [base64.b64encode(part).decode("ascii") for part in parts],
-        "page_count": len(parts),
+        "files": files_payload,
+        "pages": [item["pdf_base64"] for item in files_payload],
+        "page_count": meta.pages,
     }
     return ok(payload)
 
