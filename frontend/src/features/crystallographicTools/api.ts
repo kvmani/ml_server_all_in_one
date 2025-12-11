@@ -159,6 +159,7 @@ export async function xrdPattern(payload: {
 
 export type SaedSpot = {
   hkl: number[];
+  hkil?: number[] | null;
   zone: number;
   d_angstrom: number;
   s2: number | null;
@@ -182,6 +183,8 @@ export type SaedPattern = {
     spacegroup: string | null;
     zone_axis: number[];
     x_axis_hkl: number[] | null;
+    zone_axis_four_index?: number[] | null;
+    x_axis_hkl_four_index?: number[] | null;
     inplane_rotation_deg: number;
     voltage_kv: number;
     lambda_angstrom: number;

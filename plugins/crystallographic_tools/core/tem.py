@@ -10,13 +10,23 @@ import numpy as np
 from common.validation import ValidationError
 from pymatgen.analysis.diffraction.tem import TEMCalculator
 from pymatgen.core import Structure
+from math import gcd
+from .calculations import (
+    direction_four_to_three,
+    direction_three_to_four,
+    is_hexagonal_lattice,
+    plane_four_to_three,
+    plane_three_to_four,
+)
 
 
-def _validate_axis(axis: Sequence[float], label: str) -> tuple[int, int, int]:
+def _coerce_axis(axis: Sequence[float], label: str, *, converter=None) -> tuple[int, int, int]:
+    if converter and len(axis) == 4:
+        axis = converter(axis)  # type: ignore[assignment]
     if len(axis) != 3:
         raise ValidationError(f"{label} must have three components")
     try:
-        values = tuple(int(v) for v in axis)
+        values = tuple(int(round(v)) for v in axis)
     except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
         raise ValidationError(f"{label} must be integers") from exc
     if all(v == 0 for v in values):
@@ -42,9 +52,13 @@ class SaedConfig:
 
     @classmethod
     def from_payload(cls, structure: Structure, payload: Mapping[str, object]) -> "SaedConfig":
-        zone_axis = _validate_axis(payload.get("zone_axis", (0, 0, 1)), "Zone axis")
+        zone_axis = _coerce_axis(
+            payload.get("zone_axis", (0, 0, 1)), "Zone axis", converter=direction_four_to_three
+        )
         x_axis_raw = payload.get("x_axis_hkl")
-        x_axis_hkl = _validate_axis(x_axis_raw, "x_axis_hkl") if x_axis_raw else None
+        x_axis_hkl = _coerce_axis(
+            x_axis_raw, "x_axis_hkl", converter=plane_four_to_three
+        ) if x_axis_raw else None
 
         try:
             voltage_kv = float(payload.get("voltage_kv", 200.0))
@@ -114,6 +128,7 @@ class SaedSpot:
     r_cm: float
     two_theta_deg: float
     label: str
+    hkil: tuple[int, int, int, int] | None = None
 
 
 def _rotation_angle_for_x_axis(
@@ -129,10 +144,26 @@ def _rotation_angle_for_x_axis(
     return -math.degrees(math.atan2(y_val, x_val))
 
 
-def _normalize(value: float, min_value: float, max_value: float) -> float:
-    if max_value - min_value < 1e-9:
-        return 0.0
-    return 2 * (value - min_value) / (max_value - min_value) - 1
+def _normalize_four_index(values: Sequence[float]) -> tuple[int, int, int, int]:
+    """Return normalized Miller–Bravais indices using smallest integers."""
+
+    for factor in (1, 3):
+        scaled = [round(v * factor) for v in values]
+        if all(abs(v * factor - s) < 1e-5 for v, s in zip(values, scaled)):
+            values = scaled
+            break
+    else:
+        values = [round(v) for v in values]
+
+    non_zero = [abs(int(v)) for v in values if v]
+    divisor = gcd(*non_zero) if non_zero else 1
+    divisor = divisor or 1
+    return tuple(int(v / divisor) for v in values)
+
+
+def _plane_three_to_four_normalized(hkl: Sequence[float]) -> tuple[int, int, int, int]:
+    raw = plane_three_to_four(hkl)
+    return _normalize_four_index(raw)
 
 
 def compute_saed_pattern(structure: Structure, *, config: SaedConfig | None = None, **kwargs) -> dict:
@@ -190,6 +221,7 @@ def compute_saed_pattern(structure: Structure, *, config: SaedConfig | None = No
 
         two_theta = math.degrees(2 * theta)
         s2_val = s2_map.get(hkl)
+        hkil_norm = _plane_three_to_four_normalized(hkl)
 
         spots.append(
             SaedSpot(
@@ -208,21 +240,52 @@ def compute_saed_pattern(structure: Structure, *, config: SaedConfig | None = No
                 r_cm=r_cm,
                 two_theta_deg=two_theta,
                 label="".join(str(int(v)) for v in hkl),
+                hkil=hkil_norm,
             )
         )
 
     if not spots:
         raise ValidationError("No reflections meet the intensity threshold")
 
+    origin_intensity = max(intensity_values) if intensity_values else 1.0
+    spots.append(
+        SaedSpot(
+            hkl=(0, 0, 0),
+            zone=0,
+            d_angstrom=0.0,
+            s2=None,
+            intensity_raw=origin_intensity,
+            intensity_rel=origin_intensity,
+            x_cm=0.0,
+            y_cm=0.0,
+            x_rot_cm=0.0,
+            y_rot_cm=0.0,
+            x_norm=0.0,
+            y_norm=0.0,
+            r_cm=0.0,
+            two_theta_deg=0.0,
+            label="000",
+        )
+    )
+    x_values.append(0.0)
+    y_values.append(0.0)
+    r_values.append(0.0)
+    intensity_values.append(origin_intensity)
+
     x_min, x_max = min(x_values), max(x_values)
     y_min, y_max = min(y_values), max(y_values)
     r_max = max(r_values) if r_values else 0.0
     i_max = max(intensity_values) if intensity_values else 0.0
 
+    norm_scale = max(
+        max((abs(x) for x in x_values), default=0.0),
+        max((abs(y) for y in y_values), default=0.0),
+        1e-9,
+    )
     if cfg.normalize_position:
         for spot in spots:
-            spot.x_norm = _normalize(spot.x_rot_cm, x_min, x_max)
-            spot.y_norm = _normalize(spot.y_rot_cm, y_min, y_max)
+            spot.x_norm = spot.x_rot_cm / norm_scale
+            spot.y_norm = spot.y_rot_cm / norm_scale
 
     metadata = {
         "phase_name": cfg.phase_name or structure.composition.reduced_formula,
@@ -239,6 +302,9 @@ def compute_saed_pattern(structure: Structure, *, config: SaedConfig | None = No
         "max_index": cfg.max_index,
         "intensity_min_relative": cfg.intensity_min_relative,
     }
+    if is_hexagonal_lattice(structure.lattice):
+        metadata["zone_axis_four_index"] = direction_three_to_four(cfg.zone_axis)
+        metadata["x_axis_hkl_four_index"] = plane_three_to_four(cfg.x_axis_hkl) if cfg.x_axis_hkl else None
 
     limits = {
         "x_min": x_min,
@@ -247,6 +313,7 @@ def compute_saed_pattern(structure: Structure, *, config: SaedConfig | None = No
         "y_max": y_max,
         "r_max": r_max,
         "i_max": i_max,
+        "norm_scale": norm_scale,
     }
 
     payload = {

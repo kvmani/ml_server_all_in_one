@@ -273,6 +273,10 @@
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
+.cryst-grid--three {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
 .cryst-label {
   display: flex;
   flex-direction: column;
@@ -449,6 +453,13 @@ button.cryst-chip {
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 10px;
   padding: 0.5rem;
+}
+
+.cryst-saed__chart {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  min-height: 420px;
+  max-height: 620px;
 }
 
 .cryst-list {

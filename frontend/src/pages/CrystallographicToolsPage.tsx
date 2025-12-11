@@ -25,6 +25,7 @@ import {
   xrdPattern,
   type CalculatorResult,
   type SaedPattern,
+  type SaedSpot,
   type StructurePayload,
   type XrdPeak,
   type XrdCurvePoint,
@@ -49,18 +50,63 @@ const latticeFields = [
   { key: "gamma", label: "γ (°)" },
 ] as const;
 
-function SaedTooltip({ active, payload }: any) {
+function SaedTooltip({ active, payload, isHexagonal = false }: any) {
   if (!active || !payload || !payload.length) return null;
   const spot = payload[0].payload as any;
+  const hklLabel = isHexagonal ? formatIndexVector(planeThreeToFourLocal(spot.hkl)) : formatIndexVector(spot.hkl);
   return (
     <div className="cryst-tooltip">
-      <div className="cryst-tooltip__title">({spot.hkl.join(" ")})</div>
+      <div className="cryst-tooltip__title">({hklLabel})</div>
       <div>d = {spot.d_angstrom.toFixed(3)} Å</div>
       <div>2θ = {spot.two_theta_deg.toFixed(3)}°</div>
       <div>I = {spot.intensity_rel.toFixed(3)}</div>
     </div>
   );
 }
+
+function directionFourToThreeLocal([u, v, _t, w]: number[]): [number, number, number] {
+  const H = 2 * u + v;
+  const K = u + 2 * v;
+  return [H, K, w];
+}
+
+function directionThreeToFourLocal([H, K, W]: number[]): [number, number, number, number] {
+  const u = (2 * H - K) / 3;
+  const v = (2 * K - H) / 3;
+  const t = -(u + v);
+  return [u, v, t, W];
+}
+
+function planeFourToThreeLocal([h, k, _i, l]: number[]): [number, number, number] {
+  const H = 2 * h + k;
+  const K = h + 2 * k;
+  return [H, K, l];
+}
+
+function planeThreeToFourLocal([H, K, L]: number[]): [number, number, number, number] {
+  const h = (2 * H - K) / 3;
+  const k = (2 * K - H) / 3;
+  const i = -(h + k);
+  return [h, k, i, L];
+}
+
+function formatIndexValue(value: number) {
+  const rounded = Math.round(value);
+  if (Math.abs(value - rounded) < 1e-6) return `${rounded}`;
+  return value.toFixed(1);
+}
+
+function formatIndexVector(values: number[]) {
+  return values.map(formatIndexValue).join(" ");
+}
+
+const renderSaedPoint = (props: any) => {
+  const { cx, cy, payload, r } = props;
+  const isOrigin = payload?.isOrigin;
+  const radius = isOrigin ? 8 : r || 4;
+  const fill = isOrigin ? "#fbbf24" : "#2563eb";
+  return <circle cx={cx} cy={cy} r={radius} fill={fill} stroke="#0b1224" strokeWidth={isOrigin ? 2 : 1} />;
+};
 
 export default function CrystallographicToolsPage() {
   const [structure, setStructure] = useState<StructurePayload | null>(null);
@@ -95,8 +141,10 @@ export default function CrystallographicToolsPage() {
   const [profileW, setProfileW] = useState(0.1);
   const [profileModel, setProfileModel] = useState("gaussian");
 
-  const [zoneAxis, setZoneAxis] = useState<[number, number, number]>([1, 0, 0]);
+  const [zoneAxis, setZoneAxis] = useState<[number, number, number]>([0, 0, 1]);
+  const [zoneAxisFour, setZoneAxisFour] = useState<[number, number, number, number] | null>(null);
   const [xAxis, setXAxis] = useState<[number, number, number] | null>(null);
+  const [xAxisFour, setXAxisFour] = useState<[number, number, number, number] | null>(null);
   const [voltage, setVoltage] = useState(200);
   const [cameraLengthCm, setCameraLengthCm] = useState(10);
   const [maxIndex, setMaxIndex] = useState(3);
@@ -121,7 +169,20 @@ export default function CrystallographicToolsPage() {
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   const isHexagonal = structure?.is_hexagonal ?? false;
-  const defaultSampleName = SAMPLE_CIFS[0]?.name || "library";
+  const preferredSample = useMemo(
+    () => SAMPLE_CIFS.find((item) => item.id.toLowerCase().includes("alpha-zrp63mmc")) || SAMPLE_CIFS[0],
+    [],
+  );
+  const defaultSampleName = preferredSample?.name || "library";
+  useEffect(() => {
+    if (isHexagonal) {
+      setZoneAxisFour(directionThreeToFourLocal(zoneAxis));
+      setXAxisFour(xAxis ? planeThreeToFourLocal(xAxis) : null);
+    } else {
+      setZoneAxisFour(null);
+      setXAxisFour(null);
+    }
+  }, [isHexagonal, zoneAxis, xAxis]);
 
   const handleUpload = useCallback(
     async (file?: File) => {
@@ -141,6 +202,8 @@ export default function CrystallographicToolsPage() {
         setXrdSummary(null);
         setSaedPattern(null);
         setCalculator(null);
+        setZoneAxis([0, 0, 1]);
+        setXAxis(null);
         setActiveTab("viewer");
         status.setStatus(`Loaded ${payload.formula}`, "success");
       } catch (error) {
@@ -171,7 +234,7 @@ export default function CrystallographicToolsPage() {
   );
 
   const handleLoadSample = useCallback(async (sampleId?: string) => {
-    const sample = SAMPLE_CIFS.find((item) => item.id === sampleId) || SAMPLE_CIFS[0];
+    const sample = SAMPLE_CIFS.find((item) => item.id === sampleId) || preferredSample || SAMPLE_CIFS[0];
     if (!sample) {
       status.setStatus("No bundled CIFs found. Please upload your own.", "error");
       return;
@@ -191,12 +254,13 @@ export default function CrystallographicToolsPage() {
       setSaedPattern(null);
       setCalculator(null);
       setZoneAxis([0, 0, 1]);
+      setXAxis(null);
       setActiveTab("viewer");
       status.setStatus(`Loaded ${sample.name}`, "success");
     } catch (error) {
       status.setStatus(error instanceof Error ? error.message : "Failed to load sample", "error");
     }
-  }, [status, supercell, withLoader]);
+  }, [preferredSample, status, supercell, withLoader]);
 
   const handleEdit = useCallback(async () => {
     if (!structure) return;
@@ -265,11 +329,45 @@ export default function CrystallographicToolsPage() {
         }),
       );
       setSaedPattern(pattern);
+      setDisplayCutoff(intensityThreshold);
       status.setStatus("SAED pattern simulated", "success");
     } catch (error) {
       status.setStatus(error instanceof Error ? error.message : "SAED calculation failed", "error");
     }
   }, [structure, cifText, zoneAxis, voltage, cameraLengthCm, maxIndex, minD, intensityThreshold, xAxis, inplaneRotation, status, withLoader]);
+
+  const updateZoneAxisFromFour = useCallback(
+    (value: number, index: 0 | 1 | 3) => {
+      setZoneAxisFour((current) => {
+        const base = current ? [...current] : directionThreeToFourLocal(zoneAxis);
+        base[index] = value;
+        base[2] = -(base[0] + base[1]);
+        const threeIndex = directionFourToThreeLocal(base as [number, number, number, number]);
+        setZoneAxis(threeIndex);
+        return base as [number, number, number, number];
+      });
+    },
+    [zoneAxis],
+  );
+
+  const updateXAxisFromFour = useCallback(
+    (value: number, index: 0 | 1 | 3) => {
+      setXAxisFour((current) => {
+        const fallback = xAxis ? planeThreeToFourLocal(xAxis) : [0, 0, 0, 0];
+        const base = current ? [...current] : fallback;
+        base[index] = value;
+        base[2] = -(base[0] + base[1]);
+        const nextThree = planeFourToThreeLocal(base as [number, number, number, number]);
+        if (nextThree.every((v) => Math.abs(v) < 1e-6)) {
+          setXAxis(null);
+        } else {
+          setXAxis(nextThree as [number, number, number]);
+        }
+        return base as [number, number, number, number];
+      });
+    },
+    [xAxis],
+  );
 
   const handleCalculator = useCallback(async () => {
     if (!structure) return;
@@ -337,6 +435,14 @@ export default function CrystallographicToolsPage() {
   const xrdChartData = useMemo(() => peaks.map((peak) => ({ ...peak, label: `(${peak.hkl.join(" ")})` })), [peaks]);
 
   const equivalents = useMemo(() => calculator?.equivalents ?? null, [calculator]);
+  const [displayCutoff, setDisplayCutoff] = useState(0);
+  const formatSaedIndices = useCallback(
+    (spot: Pick<SaedSpot, "hkl" | "hkil">) => {
+      if (spot.hkil && isHexagonal) return formatIndexVector(spot.hkil);
+      return isHexagonal ? formatIndexVector(planeThreeToFourLocal(spot.hkl)) : formatIndexVector(spot.hkl);
+    },
+    [isHexagonal],
+  );
 
   const renderComputedIndex = (label: string, value: number) => (
     <div className="cryst-computed" aria-live="polite">
@@ -344,14 +450,6 @@ export default function CrystallographicToolsPage() {
       <input value={value.toFixed(3)} readOnly aria-label={label} />
     </div>
   );
-
-  const formatIndexValue = (value: number) => {
-    const rounded = Math.round(value);
-    if (Math.abs(value - rounded) < 1e-6) return `${rounded}`;
-    return value.toFixed(1);
-  };
-
-  const formatIndexVector = (values: number[]) => values.map(formatIndexValue).join(" ");
 
   return (
     <section className="cryst-page-container surface-block cryst-shell" aria-labelledby="cryst-tools-title">
@@ -443,7 +541,7 @@ export default function CrystallographicToolsPage() {
                   <button className="btn" type="button" onClick={() => fileInput.current?.click()}>
                     Upload
                   </button>
-                  <button className="btn btn--subtle" type="button" onClick={handleLoadSample}>
+                  <button className="btn btn--subtle" type="button" onClick={() => handleLoadSample(preferredSample?.id)}>
                     Load {defaultSampleName} sample
                   </button>
                   <input
@@ -718,9 +816,9 @@ export default function CrystallographicToolsPage() {
                     </div>
                   </header>
                   <div className="cryst-grid">
-                    {["h", "k", "l"].map((label, idx) => (
+                    {["u", "v", "w"].map((label, idx) => (
                       <label key={label} className="cryst-label">
-                        {label}
+                        Zone axis {label}
                         <input
                           type="number"
                           value={zoneAxis[idx]}
@@ -736,6 +834,45 @@ export default function CrystallographicToolsPage() {
                       </label>
                     ))}
                     {isHexagonal ? renderComputedIndex("t = -(u+v)", -(zoneAxis[0] + zoneAxis[1])) : null}
+                  </div>
+                  {isHexagonal ? (
+                    <div className="cryst-inline-inputs cryst-inline-inputs--compact">
+                      <label className="cryst-label">
+                        Zone axis (Miller–Bravais)
+                        <div className="cryst-inline-inputs cryst-inline-inputs--compact">
+                          <input
+                            type="number"
+                            aria-label="Zone u (four-index)"
+                            value={zoneAxisFour?.[0] ?? ""}
+                            onChange={(e) => updateZoneAxisFromFour(Number(e.target.value), 0)}
+                            placeholder="u"
+                          />
+                          <input
+                            type="number"
+                            aria-label="Zone v (four-index)"
+                            value={zoneAxisFour?.[1] ?? ""}
+                            onChange={(e) => updateZoneAxisFromFour(Number(e.target.value), 1)}
+                            placeholder="v"
+                          />
+                          <input
+                            type="number"
+                            aria-label="Zone t (derived)"
+                            value={zoneAxisFour ? -(zoneAxisFour[0] + zoneAxisFour[1]) : ""}
+                            readOnly
+                          />
+                          <input
+                            type="number"
+                            aria-label="Zone w (four-index)"
+                            value={zoneAxisFour?.[3] ?? ""}
+                            onChange={(e) => updateZoneAxisFromFour(Number(e.target.value), 3)}
+                            placeholder="w"
+                          />
+                        </div>
+                        <p className="muted">t is enforced as -(u+v). Payload is converted to [H K L] before simulation.</p>
+                      </label>
+                    </div>
+                  ) : null}
+                  <div className="cryst-grid cryst-grid--three">
                     <label className="cryst-label">
                       Voltage (kV)
                       <input type="number" value={voltage} onChange={(e) => setVoltage(Number(e.target.value))} />
@@ -763,7 +900,7 @@ export default function CrystallographicToolsPage() {
                       />
                     </label>
                     <label className="cryst-label">
-                      Align x-axis to hkl (optional)
+                      Align x-axis to plane (hkl) (optional)
                       <div className="cryst-inline-inputs">
                         {["h", "k", "l"].map((label, idx) => (
                           <input
@@ -774,7 +911,7 @@ export default function CrystallographicToolsPage() {
                             onChange={(e) => {
                               const value = Number(e.target.value);
                               setXAxis((axis) => {
-                                const next = axis ? [...axis] as [number, number, number] : [0, 0, 0];
+                                const next = axis ? ([...axis] as [number, number, number]) : [0, 0, 0];
                                 next[idx] = value;
                                 return next;
                               });
@@ -787,6 +924,37 @@ export default function CrystallographicToolsPage() {
                           i (derived) = {-(xAxis[0] + xAxis[1])}
                         </p>
                       ) : null}
+                      {isHexagonal ? (
+                        <div className="cryst-inline-inputs cryst-inline-inputs--compact">
+                          <input
+                            type="number"
+                            aria-label="x-axis h (four-index)"
+                            value={xAxisFour?.[0] ?? ""}
+                            onChange={(e) => updateXAxisFromFour(Number(e.target.value), 0)}
+                            placeholder="h"
+                          />
+                          <input
+                            type="number"
+                            aria-label="x-axis k (four-index)"
+                            value={xAxisFour?.[1] ?? ""}
+                            onChange={(e) => updateXAxisFromFour(Number(e.target.value), 1)}
+                            placeholder="k"
+                          />
+                          <input
+                            type="number"
+                            aria-label="x-axis i (derived)"
+                            value={xAxisFour ? -(xAxisFour[0] + xAxisFour[1]) : ""}
+                            readOnly
+                          />
+                          <input
+                            type="number"
+                            aria-label="x-axis l (four-index)"
+                            value={xAxisFour?.[3] ?? ""}
+                            onChange={(e) => updateXAxisFromFour(Number(e.target.value), 3)}
+                            placeholder="l"
+                          />
+                        </div>
+                      ) : null}
                     </label>
                     <label className="cryst-label">
                       In-plane rotation (°)
@@ -797,28 +965,55 @@ export default function CrystallographicToolsPage() {
                     <button className="btn" type="button" disabled={!structure} onClick={handleSaed}>
                       Simulate SAED
                     </button>
+                    {saedPattern ? (
+                      <div className="cryst-inline-inputs cryst-inline-inputs--compact">
+                        <label className="cryst-label">
+                          Display intensity ≥
+                          <input
+                            type="number"
+                            step="0.001"
+                            min={0}
+                            max={1}
+                            value={displayCutoff}
+                            onChange={(e) => setDisplayCutoff(Number(e.target.value))}
+                          />
+                        </label>
+                      </div>
+                    ) : null}
                   </div>
                   {saedPattern ? (
                     <>
                       <div className="cryst-saed">
-                        <ResponsiveContainer width="100%" height={600}>
-                          <ScatterChart margin={{ top: 10, left: 10, right: 10, bottom: 20 }}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis type="number" dataKey="x_norm" name="X" tick={{ fontSize: 12 }} domain={[-1.05, 1.05]} />
-                            <YAxis type="number" dataKey="y_norm" name="Y" tick={{ fontSize: 12 }} domain={[-1.05, 1.05]} />
-                            <Tooltip content={<SaedTooltip />} />
-                            <Scatter
-                              data={saedPattern.spots.map((spot) => ({ ...spot, size: 6 + 80 * spot.intensity_rel }))}
-                              fill="#2563eb"
-                            />
-                          </ScatterChart>
-                        </ResponsiveContainer>
+                        <div className="cryst-saed__chart">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <ScatterChart margin={{ top: 10, left: 10, right: 10, bottom: 20 }}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis type="number" dataKey="x_norm" name="X" tick={{ fontSize: 12 }} domain={[-1.05, 1.05]} />
+                              <YAxis type="number" dataKey="y_norm" name="Y" tick={{ fontSize: 12 }} domain={[-1.05, 1.05]} />
+                              <Tooltip content={(props) => <SaedTooltip isHexagonal={isHexagonal} {...props} />} />
+                              <Scatter
+                                data={saedPattern.spots
+                                  .filter(
+                                    (spot) =>
+                                      spot.hkl.every((v) => v === 0) || spot.intensity_rel >= displayCutoff,
+                                  )
+                                  .map((spot) => ({
+                                    ...spot,
+                                    size: 6 + 80 * spot.intensity_rel,
+                                    isOrigin: spot.hkl.every((v) => v === 0),
+                                  }))}
+                                shape={renderSaedPoint}
+                                fill="#2563eb"
+                              />
+                            </ScatterChart>
+                          </ResponsiveContainer>
+                        </div>
                       </div>
                       <div className="cryst-list">
                         <div className="cryst-list__header">Top reflections ({saedPattern.spots.length})</div>
                         {saedPattern.spots.slice(0, 20).map((spot, idx) => (
                           <div key={idx} className="cryst-list__row">
-                            <div className="badge">{spot.hkl.join(" ")}</div>
+                            <div className="badge">{formatSaedIndices(spot)}</div>
                             <div className="cryst-list__meta">
                               d = {spot.d_angstrom.toFixed(3)} Å · 2θ = {spot.two_theta_deg.toFixed(2)}° · I = {spot.intensity_rel.toFixed(3)}
                             </div>

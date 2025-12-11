@@ -29,6 +29,41 @@ Si1  Si  0.00000  0.00000  0.00000
 Si2  Si  0.25000  0.25000  0.25000
 """
 
+HEX_CIF = b"""data_Mg
+_symmetry_space_group_name_H-M   'P 6 3/m m c'
+_symmetry_Int_Tables_number      194
+_cell_length_a   3.209
+_cell_length_b   3.209
+_cell_length_c   5.211
+_cell_angle_alpha   90
+_cell_angle_beta    90
+_cell_angle_gamma   120
+
+loop_
+ _symmetry_equiv_pos_as_xyz
+  x,y,z
+  -y,x-y,z
+  -x,-y,z
+  -x+y,x,z
+  y,-x+y,z
+  x,x-y,z
+  x,y,-z+1/2
+  -y,x-y,-z+1/2
+  -x,-y,-z+1/2
+  -x+y,x,-z+1/2
+  y,-x+y,-z+1/2
+  x,x-y,-z+1/2
+
+loop_
+ _atom_site_label
+ _atom_site_type_symbol
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+Mg1 Mg 0 0 0
+Mg2 Mg 0 0 0.5
+"""
+
 
 def test_load_cif_endpoint():
     client = _client()
@@ -82,6 +117,29 @@ def test_tem_saed_endpoint():
     assert payload["spots"]
     assert payload["metadata"]["camera_length_cm"] == 12.0
     assert payload["limits"]["i_max"] <= 1.0
+    assert payload["limits"]["norm_scale"] > 0
+
+
+def test_tem_saed_accepts_four_index_inputs():
+    client = _client()
+    resp = client.post(
+        "/api/crystallographic_tools/tem_saed",
+        json={
+            "cif": HEX_CIF.decode(),
+            "zone_axis": [1, -1, 0, 0],
+            "x_axis_hkl": [1, 0, -1, 0],
+            "max_index": 2,
+            "camera_length_cm": 10,
+            "intensity_min_relative": 1e-4,
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()["data"]
+    assert payload["metadata"]["zone_axis"] == [1, -1, 0]
+    assert payload["metadata"]["zone_axis_four_index"] == [1.0, -1.0, 0.0, 0.0]
+    assert payload["metadata"]["x_axis_hkl_four_index"] == [1.0, 0.0, -1.0, 0.0]
+    assert payload["spots"]
+    assert any(spot["hkl"] == [0, 0, 0] for spot in payload["spots"])
 
 
 def test_calculator_endpoint():
