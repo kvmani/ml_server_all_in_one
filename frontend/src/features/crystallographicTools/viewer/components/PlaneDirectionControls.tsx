@@ -1,26 +1,83 @@
-import type { DirectionConfig, PlaneConfig, ViewerSettings } from "../types";
+import { useEffect, useMemo, useState } from "react";
+import { elementColor } from "../../utils/elementColors";
+import type { DirectionConfig, ElementOverrides, PlaneConfig, ViewerSettings } from "../types";
+
+function normalizeElementSymbol(symbol: string): string {
+  const match = symbol.trim().match(/^[A-Z][a-z]?/);
+  return match ? match[0] : symbol.trim();
+}
 
 type Props = {
   planes: PlaneConfig[];
   directions: DirectionConfig[];
   isHexagonal: boolean;
+  elements: string[];
   settings: ViewerSettings;
+  elementOverrides: ElementOverrides;
+  onElementOverridesChange: (next: ElementOverrides) => void;
   onPlanesChange: (next: PlaneConfig[]) => void;
   onDirectionsChange: (next: DirectionConfig[]) => void;
   onSettingsChange: (settings: Partial<ViewerSettings>) => void;
-  onOpenAtomSettings: () => void;
 };
 
 export function PlaneDirectionControls({
   planes,
   directions,
   isHexagonal,
+  elements,
   settings,
+  elementOverrides,
+  onElementOverridesChange,
   onPlanesChange,
   onDirectionsChange,
   onSettingsChange,
-  onOpenAtomSettings,
 }: Props) {
+  const sortedElements = useMemo(() => Array.from(new Set(elements.map((el) => el?.trim()).filter(Boolean))).sort(), [elements]);
+  const [selectedElement, setSelectedElement] = useState<string>(sortedElements[0] || "");
+
+  useEffect(() => {
+    if (!sortedElements.length) {
+      setSelectedElement("");
+      return;
+    }
+    if (selectedElement && sortedElements.includes(selectedElement)) return;
+    setSelectedElement(sortedElements[0]);
+  }, [selectedElement, sortedElements]);
+
+  const selectedOverride = selectedElement ? elementOverrides[selectedElement] : undefined;
+  const selectedDefaultColor = selectedElement ? elementColor(normalizeElementSymbol(selectedElement)) : elementColor(undefined);
+
+  const updateSelectedElement = (partial: Partial<{ color: string; scale: number }>) => {
+    if (!selectedElement) return;
+    const current = elementOverrides[selectedElement] || {};
+    const next = { ...current, ...partial };
+    const cleaned: { color?: string; scale?: number } = {};
+
+    if (next.color) {
+      cleaned.color = next.color;
+    }
+    if (typeof next.scale === "number" && Math.abs(next.scale - 1) > 1e-3) {
+      cleaned.scale = next.scale;
+    }
+
+    const nextOverrides = { ...elementOverrides };
+    if (Object.keys(cleaned).length === 0) {
+      delete nextOverrides[selectedElement];
+    } else {
+      nextOverrides[selectedElement] = cleaned;
+    }
+    onElementOverridesChange(nextOverrides);
+  };
+
+  const resetSelectedElement = () => {
+    if (!selectedElement) return;
+    const next = { ...elementOverrides };
+    delete next[selectedElement];
+    onElementOverridesChange(next);
+  };
+
+  const resetAllElements = () => onElementOverridesChange({});
+
   const handlePlaneField = (index: number, key: keyof PlaneConfig, value: number | boolean | string) => {
     const next = planes.map((plane, idx) => (idx === index ? { ...plane, [key]: value } : plane));
     onPlanesChange(next);
@@ -44,9 +101,6 @@ export function PlaneDirectionControls({
       <div className="cryst-stack">
         <div className="cryst-flex-between">
           <p className="eyebrow">Atoms & layers</p>
-          <button className="btn btn--subtle" type="button" onClick={onOpenAtomSettings} aria-label="Open atom view properties">
-            ⚙ Atom view properties
-          </button>
         </div>
         <div className="cryst-grid">
           <label className="cryst-label">
@@ -60,13 +114,16 @@ export function PlaneDirectionControls({
             </select>
           </label>
           <label className="cryst-label" aria-live="polite">
-            Custom color
+            Custom color (switches to single color)
             <input
               type="color"
               value={settings.customColor}
-              onChange={(event) => onSettingsChange({ customColor: event.target.value })}
-              disabled={settings.colorMode !== "single"}
-              aria-disabled={settings.colorMode !== "single"}
+              onChange={(event) =>
+                onSettingsChange({
+                  customColor: event.target.value,
+                  colorMode: "single",
+                })
+              }
             />
           </label>
           <label className="cryst-label">
@@ -92,6 +149,50 @@ export function PlaneDirectionControls({
             />
           </label>
         </div>
+        {sortedElements.length ? (
+          <details className="cryst-details">
+            <summary className="cryst-details__summary">Per-element overrides</summary>
+            <div className="cryst-grid" style={{ marginTop: "0.5rem" }}>
+              <label className="cryst-label">
+                Element
+                <select value={selectedElement} onChange={(event) => setSelectedElement(event.target.value)}>
+                  {sortedElements.map((el) => (
+                    <option key={el} value={el}>
+                      {el}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="cryst-label">
+                Color
+                <input
+                  type="color"
+                  value={selectedOverride?.color || selectedDefaultColor}
+                  onChange={(event) => updateSelectedElement({ color: event.target.value })}
+                />
+              </label>
+              <label className="cryst-label">
+                Scale
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2}
+                  step={0.05}
+                  value={selectedOverride?.scale ?? 1}
+                  onChange={(event) => updateSelectedElement({ scale: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+            <div className="cryst-actions" style={{ marginTop: "0.35rem" }}>
+              <button className="btn btn--ghost" type="button" onClick={resetSelectedElement}>
+                Reset
+              </button>
+              <button className="btn btn--subtle" type="button" onClick={resetAllElements}>
+                Reset all
+              </button>
+            </div>
+          </details>
+        ) : null}
         <div className="cryst-chip-row">
           {[
             { key: "showAtoms", label: "Atoms" },

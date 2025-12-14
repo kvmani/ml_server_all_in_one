@@ -21,8 +21,8 @@ export type DirectionConfig = {
 export type ElementOverrides = Record<
   string,
   {
-    color: string;
-    scale: number;
+    color?: string;
+    scale?: number;
   }
 >;
 

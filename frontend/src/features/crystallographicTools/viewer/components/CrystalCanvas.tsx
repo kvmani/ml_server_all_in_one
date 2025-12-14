@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { StructurePayload, ViewerBasisSite } from "../../api";
@@ -17,11 +17,35 @@ type Props = {
   elementOverrides?: ElementOverrides;
 };
 
-type AtomVisual = {
+export type AtomVisual = {
   position: THREE.Vector3;
   color: THREE.Color;
+  colorHex: string;
   radius: number;
 };
+
+function normalizeElementSymbol(symbol: string): string {
+  const match = symbol.match(/^[A-Z][a-z]?/);
+  return match ? match[0] : symbol;
+}
+
+function computeAtomColorKeys(
+  basis: ViewerBasisSite[] | undefined,
+  colorMode: ViewerSettings["colorMode"],
+  customColor: string,
+  elementOverrides: ElementOverrides | undefined,
+): string[] {
+  if (!basis?.length) return [];
+  const colors = new Set<string>();
+  basis.forEach((site) => {
+    const rawSymbol = (site.element || "").trim();
+    const paletteSymbol = normalizeElementSymbol(rawSymbol);
+    const override = elementOverrides?.[rawSymbol] ?? elementOverrides?.[paletteSymbol];
+    const colorHex = override?.color ?? (colorMode === "single" ? customColor : elementColor(paletteSymbol));
+    colors.add(colorHex);
+  });
+  return Array.from(colors).sort();
+}
 
 function latticeVectors(latticeMatrix?: number[][]): [THREE.Vector3, THREE.Vector3, THREE.Vector3] {
   const matrix = latticeMatrix ?? [
@@ -43,7 +67,7 @@ function fracToCart(frac: THREE.Vector3, vectors: [THREE.Vector3, THREE.Vector3,
     .addScaledVector(vectors[2], frac.z);
 }
 
-function buildAtoms(
+export function buildAtoms(
   basis: ViewerBasisSite[],
   vectors: [THREE.Vector3, THREE.Vector3, THREE.Vector3],
   supercell: [number, number, number],
@@ -60,14 +84,14 @@ function buildAtoms(
   const [na, nb, nc] = supercell;
   basis.forEach((site) => {
     const frac = site.frac_position || site.frac_coords;
-    const symbol = (site.element || "").trim();
-    const override = elementOverrides?.[symbol];
-    const baseRadius = (site.atomic_radius ?? elementRadii[symbol] ?? 0.6) * atomScale * (override?.scale ?? 1);
+    const rawSymbol = (site.element || "").trim();
+    const paletteSymbol = normalizeElementSymbol(rawSymbol);
+    const override = elementOverrides?.[rawSymbol] ?? elementOverrides?.[paletteSymbol];
+    const baseRadius = (site.atomic_radius ?? elementRadii[rawSymbol] ?? elementRadii[paletteSymbol] ?? 0.6) * atomScale * (override?.scale ?? 1);
     const radius = Math.max(minAtomRadius, baseRadius);
     const basePosition = fracToCart(new THREE.Vector3(frac[0], frac[1], frac[2]), vectors);
-    const color = new THREE.Color(
-      override?.color ?? (colorMode === "single" ? customColor : elementColor(symbol)),
-    ).convertSRGBToLinear();
+    const colorHex = override?.color ?? (colorMode === "single" ? customColor : elementColor(paletteSymbol));
+    const color = new THREE.Color(colorHex).convertSRGBToLinear();
     for (let i = 0; i < na; i += 1) {
       for (let j = 0; j < nb; j += 1) {
         for (let k = 0; k < nc; k += 1) {
@@ -75,6 +99,7 @@ function buildAtoms(
           atoms.push({
             position: basePosition.clone().add(offset),
             color,
+            colorHex,
             radius,
           });
         }
@@ -214,6 +239,13 @@ export function CrystalCanvas({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [fallback, setFallback] = useState<string | null>(null);
+  const atomColorKeys = useMemo(
+    () =>
+      settings.showAtoms
+        ? computeAtomColorKeys(structure?.basis, settings.colorMode, settings.customColor, elementOverrides)
+        : [],
+    [elementOverrides, settings.colorMode, settings.customColor, settings.showAtoms, structure?.basis],
+  );
 
   useEffect(() => {
     if (!structure || !structure.basis || !structure.lattice_matrix) {
@@ -248,7 +280,6 @@ export function CrystalCanvas({
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, context: gl, alpha: true });
     (renderer as any).outputColorSpace = THREE.SRGBColorSpace;
-    (renderer as any).outputEncoding = THREE.sRGBEncoding;
     renderer.shadowMap.enabled = false;
     const resize = () => {
       const { clientWidth, clientHeight } = container;
@@ -297,37 +328,44 @@ export function CrystalCanvas({
       settings.minAtomRadius,
       settings.colorMode,
       settings.customColor,
-      settings.elementOverrides,
+      elementOverrides,
       settings.showAtoms,
     );
     if (atoms.length && settings.showAtoms) {
       const geometry = new THREE.SphereGeometry(1, 24, 24);
-      const material = new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        metalness: 0.25,
-        roughness: 0.4,
+      const groups = new Map<string, AtomVisual[]>();
+      atoms.forEach((atom) => {
+        const bucket = groups.get(atom.colorHex);
+        if (bucket) {
+          bucket.push(atom);
+        } else {
+          groups.set(atom.colorHex, [atom]);
+        }
       });
-      material.color.set("#ffffff");
-      material.emissive = new THREE.Color("#0c1020");
-      material.emissiveIntensity = 0.18;
-      material.needsUpdate = true;
-      const mesh = new THREE.InstancedMesh(geometry, material, atoms.length);
-      const colorArray = new Float32Array(atoms.length * 3);
-      atoms.forEach((atom, index) => {
-        const matrix = new THREE.Matrix4();
-        matrix.makeScale(atom.radius, atom.radius, atom.radius);
-        matrix.setPosition(atom.position);
-        mesh.setMatrixAt(index, matrix);
-        colorArray.set(atom.color.toArray(), index * 3);
+
+      groups.forEach((groupAtoms, colorHex) => {
+        const material = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(colorHex).convertSRGBToLinear(),
+          metalness: 0.25,
+          roughness: 0.4,
+        });
+        material.emissive = new THREE.Color("#0c1020");
+        material.emissiveIntensity = 0.18;
+        material.toneMapped = false;
+        material.needsUpdate = true;
+
+        const mesh = new THREE.InstancedMesh(geometry, material, groupAtoms.length);
+        groupAtoms.forEach((atom, index) => {
+          const matrix = new THREE.Matrix4();
+          matrix.makeScale(atom.radius, atom.radius, atom.radius);
+          matrix.setPosition(atom.position);
+          mesh.setMatrixAt(index, matrix);
+        });
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+        scene.add(mesh);
       });
-      mesh.instanceColor = new THREE.InstancedBufferAttribute(colorArray, 3);
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) {
-        mesh.instanceColor.needsUpdate = true;
-      }
-      mesh.castShadow = false;
-      mesh.receiveShadow = false;
-      scene.add(mesh);
     }
 
     if (settings.showPlanes) {
@@ -401,7 +439,14 @@ export function CrystalCanvas({
   const totalAtoms = structure?.viewer_limits ? atomCountForSupercell(structure.viewer_limits.atom_count, supercell) : 0;
 
   return (
-    <div className="cryst-viewer__canvas" ref={containerRef} aria-live="polite">
+    <div
+      className="cryst-viewer__canvas"
+      ref={containerRef}
+      aria-live="polite"
+      data-atom-color-mode={settings.colorMode}
+      data-atom-custom-color={settings.customColor}
+      data-atom-colors={atomColorKeys.join(",")}
+    >
       <canvas ref={canvasRef} />
       <div className="cryst-viewer__hud">
         <div className="badge">{structure?.space_group?.symbol || "P1"}</div>

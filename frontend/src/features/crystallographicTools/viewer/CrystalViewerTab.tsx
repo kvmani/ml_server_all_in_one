@@ -3,7 +3,6 @@ import type { StructurePayload, ViewerLimits } from "../api";
 import CrystalCanvas from "./components/CrystalCanvas";
 import PlaneDirectionControls from "./components/PlaneDirectionControls";
 import StructureControls from "./components/StructureControls";
-import AtomTypeSettings from "./components/AtomTypeSettings";
 import type { DirectionConfig, ElementOverrides, PlaneConfig, ViewerSettings } from "./types";
 import type { SampleCif } from "../samples";
 
@@ -41,8 +40,8 @@ const DEFAULT_SETTINGS: ViewerSettings = {
   showAxes: false,
   atomScale: 0.85,
   minAtomRadius: 0.25,
-  colorMode: "element",
-  customColor: "#3b82f6",
+  colorMode: "single",
+  customColor: "#ef4444",
 };
 
 export function CrystalViewerTab({
@@ -62,7 +61,6 @@ export function CrystalViewerTab({
   const [directions, setDirections] = useState<DirectionConfig[]>(DEFAULT_DIRECTIONS);
   const [settings, setSettings] = useState<ViewerSettings>(DEFAULT_SETTINGS);
   const [canvasKey, setCanvasKey] = useState(0);
-  const [showAtomSettings, setShowAtomSettings] = useState(false);
   const [elementOverrides, setElementOverrides] = useState<ElementOverrides>({});
 
   const limitWarning = useMemo(() => {
@@ -101,9 +99,6 @@ export function CrystalViewerTab({
             <p className="muted">Orbit, pan, and zoom. Planes and arrows update instantly.</p>
           </div>
           <div className="cryst-actions">
-            <button className="btn btn--subtle" type="button" onClick={() => setShowAtomSettings((open) => !open)}>
-              ⚙ Atom view properties
-            </button>
             <button className="btn btn--subtle" type="button" onClick={() => setCanvasKey((key) => key + 1)}>
               Reset camera
             </button>
@@ -114,36 +109,22 @@ export function CrystalViewerTab({
           supercell={supercell}
           planes={planes}
           directions={directions}
-          settings={{ ...settings, elementOverrides }}
+          settings={settings}
           elementRadii={elementRadii}
           canvasKey={canvasKey}
           elementOverrides={elementOverrides}
         />
         {limitWarning ? <div className="cryst-warning">{limitWarning}</div> : null}
-        <div className="cryst-viewer__hud cryst-viewer__hud--actions">
-          <button className="btn btn--subtle" type="button" onClick={() => setShowAtomSettings((open) => !open)} aria-label="Atom view properties">
-            ⚙ Atom view properties
-          </button>
-        </div>
-        {showAtomSettings && structure ? (
-          <AtomTypeSettings
-            elements={(structure.basis || []).map((site) => site.element)}
-            overrides={elementOverrides}
-            onChange={(next) => {
-              setElementOverrides(next);
-              setSettings((current) => ({ ...current, elementOverrides: next }));
-            }}
-            onClose={() => setShowAtomSettings(false)}
-          />
-        ) : null}
       </div>
 
       <PlaneDirectionControls
         planes={planes}
         directions={directions}
         isHexagonal={structure?.is_hexagonal ?? false}
+        elements={(structure?.basis || []).map((site) => site.element)}
         settings={settings}
-        onOpenAtomSettings={() => setShowAtomSettings(true)}
+        elementOverrides={elementOverrides}
+        onElementOverridesChange={setElementOverrides}
         onPlanesChange={setPlanes}
         onDirectionsChange={setDirections}
         onSettingsChange={(partial) => setSettings((current) => ({ ...current, ...partial }))}

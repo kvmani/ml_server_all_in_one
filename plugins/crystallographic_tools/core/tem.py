@@ -166,8 +166,17 @@ def _plane_three_to_four_normalized(hkl: Sequence[float]) -> tuple[int, int, int
     return _normalize_four_index(raw)
 
 
+def _zone_axis_dot(hkl: Sequence[int], zone_axis: tuple[int, int, int]) -> int:
+    """Return the zone law dot product u*h + v*k + w*l for integer indices."""
+
+    h, k, l = (int(hkl[0]), int(hkl[1]), int(hkl[2]))
+    u, v, w = zone_axis
+    return u * h + v * k + w * l
+
+
 def compute_saed_pattern(structure: Structure, *, config: SaedConfig | None = None, **kwargs) -> dict:
     cfg = config or SaedConfig.from_payload(structure, kwargs)
+    hex_lattice = is_hexagonal_lattice(structure.lattice)
 
     calculator = TEMCalculator(
         voltage=cfg.voltage_kv,
@@ -179,7 +188,9 @@ def compute_saed_pattern(structure: Structure, *, config: SaedConfig | None = No
     points = calculator.generate_points(coord_left=-cfg.max_index, coord_right=cfg.max_index)
     points = [tuple(map(int, p)) for p in points if max(abs(int(v)) for v in p) <= cfg.max_index]
     points = [p for p in points if any(p)]
-    zone_filtered = calculator.zone_axis_filter(points, laue_zone=cfg.laue_zone)
+    # Enforce the crystallographic zone law: u*h + v*k + w*l = laue_zone.
+    # This keeps the rendered spots consistent with the zone-axis selection in the UI.
+    zone_filtered = [hkl for hkl in points if _zone_axis_dot(hkl, cfg.zone_axis) == cfg.laue_zone]
 
     d_map = calculator.get_interplanar_spacings(structure, zone_filtered)
     if cfg.min_d_angstrom:
@@ -221,7 +232,7 @@ def compute_saed_pattern(structure: Structure, *, config: SaedConfig | None = No
 
         two_theta = math.degrees(2 * theta)
         s2_val = s2_map.get(hkl)
-        hkil_norm = _plane_three_to_four_normalized(hkl)
+        hkil_norm = _plane_three_to_four_normalized(hkl) if hex_lattice else None
 
         spots.append(
             SaedSpot(
@@ -302,7 +313,7 @@ def compute_saed_pattern(structure: Structure, *, config: SaedConfig | None = No
         "max_index": cfg.max_index,
         "intensity_min_relative": cfg.intensity_min_relative,
     }
-    if is_hexagonal_lattice(structure.lattice):
+    if hex_lattice:
         metadata["zone_axis_four_index"] = direction_three_to_four(cfg.zone_axis)
         metadata["x_axis_hkl_four_index"] = plane_three_to_four(cfg.x_axis_hkl) if cfg.x_axis_hkl else None
 

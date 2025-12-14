@@ -8,7 +8,7 @@ export default defineConfig({
   base: "/static/react/",
   server: {
     proxy: {
-      "/api": "http://localhost:5000",
+      "/api": "http://localhost:5001",
     },
   },
   build: {

@@ -24,6 +24,18 @@ describe("CrystallographicToolsPage", () => {
   });
 
   beforeEach(() => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      width: 900,
+      height: 700,
+      top: 0,
+      left: 0,
+      bottom: 700,
+      right: 900,
+      x: 0,
+      y: 0,
+      toJSON: () => "",
+    } as DOMRect);
+
     const viewerPayload = {
       lattice: { a: 5.43, b: 5.43, c: 5.43, alpha: 90, beta: 90, gamma: 90 },
       lattice_matrix: [
@@ -195,6 +207,47 @@ describe("CrystallographicToolsPage", () => {
     await waitFor(() => expect(screen.getByText(/60\.00°/)).toBeInTheDocument());
   });
 
+  it("toggles SAED reflection annotations on the chart", async () => {
+    const { container } = renderPage();
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["cif"], "si.cif", { type: "chemical/x-cif" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => expect(screen.getByText("Si2")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("tab", { name: /tem/i }));
+    fireEvent.click(screen.getByRole("button", { name: /simulate saed/i }));
+    await waitFor(() => expect(screen.getByText(/Top reflections/i)).toBeInTheDocument());
+
+    expect(screen.queryAllByTestId("saed-reflection-label")).toHaveLength(0);
+    fireEvent.click(screen.getByRole("checkbox", { name: /annotate reflections/i }));
+    await waitFor(() => expect(screen.queryAllByTestId("saed-reflection-label").length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("checkbox", { name: /annotate reflections/i }));
+    await waitFor(() => expect(screen.queryAllByTestId("saed-reflection-label")).toHaveLength(0));
+  });
+
+  it("updates SAED spot radii when the Size control changes", async () => {
+    const { container } = renderPage();
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["cif"], "si.cif", { type: "chemical/x-cif" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => expect(screen.getByText("Si2")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("tab", { name: /tem/i }));
+    fireEvent.click(screen.getByRole("button", { name: /simulate saed/i }));
+    await waitFor(() => expect(screen.getByText(/Top reflections/i)).toBeInTheDocument());
+
+    const getRadius = () => Number(screen.getByTestId("saed-spot-1_1_0").getAttribute("r"));
+    const initialRadius = getRadius();
+    expect(Number.isFinite(initialRadius)).toBe(true);
+
+    const slider = screen.getByLabelText(/saed spot size scale/i) as HTMLInputElement;
+    fireEvent.change(slider, { target: { value: "2" } });
+
+    await waitFor(() => expect(getRadius()).toBeGreaterThan(initialRadius + 0.1));
+  });
+
   it("loads the Fe sample and pre-fills a [0 0 1] zone axis", async () => {
     const { container } = renderPage();
     fireEvent.click(screen.getByRole("button", { name: /load .*sample/i }));
@@ -202,13 +255,13 @@ describe("CrystallographicToolsPage", () => {
     await waitFor(() => expect(screen.getByText("Fe2")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("tab", { name: /tem/i }));
-    const [zoneH] = screen.getAllByLabelText("h") as HTMLInputElement[];
-    const kInput = screen.getByLabelText("k") as HTMLInputElement;
-    const lInput = screen.getByLabelText("l") as HTMLInputElement;
+    const uInput = screen.getByLabelText(/zone axis u/i) as HTMLInputElement;
+    const vInput = screen.getByLabelText(/zone axis v/i) as HTMLInputElement;
+    const wInput = screen.getByLabelText(/zone axis w/i) as HTMLInputElement;
 
-    expect(zoneH.value).toBe("0");
-    expect(kInput.value).toBe("0");
-    expect(lInput.value).toBe("1");
+    expect(uInput.value).toBe("0");
+    expect(vInput.value).toBe("0");
+    expect(wInput.value).toBe("1");
   });
 
   it("shows four-index helpers for hexagonal structures", async () => {
@@ -252,10 +305,28 @@ describe("CrystallographicToolsPage", () => {
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File(["cif"], "hex.cif", { type: "chemical/x-cif" });
     fireEvent.change(fileInput, { target: { files: [file] } });
-    await waitFor(() => expect(screen.getByText("Mg")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Mg", { selector: ".cryst-meta__value" })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("tab", { name: /Calculator/i }));
     const [computedField] = screen.getAllByLabelText("Direction A t (derived)") as HTMLInputElement[];
     expect(computedField.value).toBe("-1");
+  });
+
+  it("updates crystal-viewer atom colors from UI controls", async () => {
+    const { container } = renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /load .*sample/i }));
+
+    await waitFor(() => expect(screen.getByText("Fe2")).toBeInTheDocument());
+
+    const canvas = container.querySelector(".cryst-viewer__canvas") as HTMLDivElement | null;
+    expect(canvas).not.toBeNull();
+
+    await waitFor(() => expect(canvas?.getAttribute("data-atom-colors")).toBe("#ef4444"));
+
+    const customColor = screen.getByLabelText(/custom color/i) as HTMLInputElement;
+    fireEvent.change(customColor, { target: { value: "#00ff00" } });
+
+    await waitFor(() => expect(canvas?.getAttribute("data-atom-colors")).toBe("#00ff00"));
+    expect(canvas?.getAttribute("data-atom-color-mode")).toBe("single");
   });
 });
