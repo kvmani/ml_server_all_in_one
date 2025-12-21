@@ -505,93 +505,132 @@
   list-style: none;
   padding: 0;
   margin: 0;
+/* Tabs Container */
+.pdf-workspace-wrapper {
   display: grid;
-  gap: 0.75rem;
 }
 
-.split-results li {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 0.75rem 1rem;
-  background: rgba(8, 12, 26, 0.4);
-}
-
-.split-results__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.split-results button {
-  width: auto;
-}
-
-@media (max-width: 720px) {
-  .merge-panel__header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .merge-entry__layout {
-    grid-template-columns: 1fr;
-  }
-
-  .merge-entry__thumbnail {
-    aspect-ratio: auto;
-    min-height: 220px;
-  }
-}
-
-/* Tabbed Interface Styling */
 .pdf-tabs {
   display: flex;
-  gap: 0.4rem;
-  padding: 0.4rem;
-  margin-bottom: 1rem;
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9));
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  border-radius: 12px;
+  align-items: flex-end;
+  gap: 4px;
+  margin-bottom: -1px; /* Overlap with workspace border */
+  padding-left: 1rem;
+  z-index: 10;
 }
 
-.pdf-tab {
-  flex: 1;
-  padding: 0.65rem 0.75rem;
-  background: rgba(17, 28, 51, 0.72);
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  border-radius: 10px;
-  color: inherit;
-  font-weight: 700;
+.pdf-tabs button {
+  appearance: none;
+  background: transparent;
+  color: var(--color-muted);
+  border: none;
+  border-radius: 12px 12px 0 0; /* Significant rounding for folder look */
+  padding: 0.8rem 1.5rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: center;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  position: relative;
+  transition: color 0.2s, background 0.2s;
+  opacity: 0.7;
 }
 
-.pdf-tab:hover {
-  border-color: rgba(59, 130, 246, 0.6);
-  color: #e2e8f0;
+.pdf-tabs button:hover {
+  color: var(--color-text);
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.05);
 }
 
-.pdf-tab.is-active {
-  background: linear-gradient(135deg, #0ea5e9, #1d4ed8);
-  color: #e2e8f0;
-  border-color: rgba(14, 165, 233, 0.8);
-  box-shadow: 0 6px 18px rgba(14, 165, 233, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+.pdf-tabs button.is-active {
+  background: var(--color-surface, #1e293b);
+  color: #fbbf24; /* Yellowish accent color matching screenshot 'ARTICLES A-Z' */
+  opacity: 1;
+  /* Visual trick to merge with content below */
+  box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
-.pdf-tab:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+/* Fake the 'border-top' of workspace not happening under active tab */
+.pdf-tabs button.is-active::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--color-surface, #1e293b);
+  z-index: 20;
 }
 
-/* Ensure the workspace has a matching background/border */
 .tool-shell__workspace {
   background: var(--color-surface, #1e293b);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 1.25rem;
+  border-top-left-radius: 16px; /* If first tab active, logic mismatch? handled by tab design */
+  /* Actually, for folder look, the container usually has rounded corners,
+     and the tabs sit on top.
+     User ref image has active tab 'merged' with content.
+  */
+  border-radius: 0 16px 16px 16px; /* Top-left sharp if tab is there? Or just rounded generally */
+  /* Let's stick to standard rounded box with tabs on top */
+  border-radius: 16px;
+  /* Correction: if the first tab is active, we want top-left corner of box to be covered? */
+  /* Simplest: Box has rounded corners. Active tab sits on top and shares background. */
+  padding: 2rem;
+  /* Make sure it has a background distinct from page if page is dark?
+     User prompt said 'dark theme (midnight blue/slate background)'.
+     Assuming --color-surface is that background.
+  */
+  background: #1e293b; /* Hardcode fallback for safety */
+  /* Add subtle highlight/border */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Specific Tool Styles (Restored and adapted) */
+.merge-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.merge-entries:empty {
+  min-height: 200px;
+  border: 2px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
   display: grid;
-  gap: 1.25rem;
+  place-items: center;
+  color: var(--color-muted);
+}
+
+.merge-entry {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.pdf-queue__row {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Adjust Stitch Panel layout */
+.pdf-stitch-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+@media (max-width: 900px) {
+  .pdf-stitch-layout {
+    grid-template-columns: 1fr;
+  }
 }

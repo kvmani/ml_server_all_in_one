@@ -50,7 +50,7 @@ def test_segment_endpoint_with_parameters():
         "area_threshold": "50",
         "crop_enabled": "on",
         "crop_percent": "25",
-        "model": "ml",
+        "model": "conventional",
     }
     response = client.post(
         "/api/hydride_segmentation/segment",
@@ -61,7 +61,7 @@ def test_segment_endpoint_with_parameters():
     payload = response.get_json()
     assert payload["success"] is True
     data_payload = payload["data"]
-    assert data_payload["parameters"]["model"] == "ml"
+    assert data_payload["parameters"]["model"] == "conventional"
     assert data_payload["parameters"]["conventional"]["morph_iters"] == 2
     assert data_payload["logs"]
 
@@ -96,3 +96,33 @@ def test_segment_rejects_oversized_image_pixels(monkeypatch):
     payload = response.get_json()
     assert payload["success"] is False
     assert "maximum" in payload["error"]["message"].lower()
+
+
+def test_config_endpoint():
+    client = _make_client()
+    response = client.get("/api/hydride_segmentation/config")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["success"] is True
+    data_payload = payload["data"]
+    assert "ml_available" in data_payload
+    assert "ml_models" in data_payload
+
+
+def test_segment_ml_unavailable(monkeypatch):
+    from plugins.hydride_segmentation import api as hydride_api
+
+    monkeypatch.setattr(hydride_api, "ml_available", lambda: False)
+    client = _make_client()
+    data = {
+        "image": (io.BytesIO(_dummy_png()), "sample.png"),
+        "model": "ml",
+    }
+    response = client.post(
+        "/api/hydride_segmentation/segment",
+        data=data,
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 503
+    payload = response.get_json()
+    assert payload["success"] is False

@@ -7,3 +7,7 @@ frontend/node_modules/
 app/ui/static/react/
 frontend/playwright-report/
 frontend/test-results/
+model_store/
+old_codes/mlserver_all_in_one/
+*.pth
+*.pt

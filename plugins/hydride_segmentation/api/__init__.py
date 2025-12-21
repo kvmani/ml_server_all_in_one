@@ -3,23 +3,31 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from pathlib import Path
 
 from flask import Blueprint, Response, current_app, request
 from PIL import Image
 
-from common.errors import ValidationAppError
+from common.errors import AppError, InternalAppError, NotFoundAppError, ValidationAppError
 from common.forms import get_bool, get_float, get_int
+from common.model_store import resolve_model_path, resolve_models_root
 from common.responses import fail, ok
 from common.validation import FileLimit, ValidationError, enforce_limits, validate_mime
 
 from ..core import (
     ConventionalParams,
+    MlModelError,
+    MlModelSpec,
+    MlUnavailableError,
     SegmentationOutput,
     analyze_mask,
     combined_panel,
     compute_metrics,
     decode_image,
+    ml_available,
+    ml_import_error,
     segment_conventional,
+    segment_ml,
 )
 from ..core.image_io import MAX_IMAGE_PIXELS, image_to_png_base64
 
@@ -42,6 +50,10 @@ def _max_pixels() -> int:
         return int(settings.get("max_pixels", MAX_IMAGE_PIXELS))
     except (TypeError, ValueError):
         return MAX_IMAGE_PIXELS
+
+
+def _repo_root() -> Path:
+    return Path(current_app.root_path).resolve().parent
 
 
 def _parse_conventional_params(form) -> ConventionalParams:
@@ -130,6 +142,142 @@ def _parse_conventional_params(form) -> ConventionalParams:
     )
 
 
+def _load_ml_specs() -> tuple[list[MlModelSpec], list[str]]:
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get(
+        "hydride_segmentation", {}
+    )
+    specs: list[MlModelSpec] = []
+    warnings: list[str] = []
+    for entry in settings.get("models", []) or []:
+        if not isinstance(entry, dict):
+            warnings.append("Invalid ML model entry (expected mapping).")
+            continue
+        model_id = entry.get("id")
+        model_file = entry.get("file")
+        if not model_id or not model_file:
+            warnings.append("ML model entries require 'id' and 'file'.")
+            continue
+        specs.append(
+            MlModelSpec(
+                model_id=str(model_id),
+                label=str(entry.get("label") or model_id),
+                file=str(model_file),
+                placeholder=bool(entry.get("placeholder") or False),
+                input_size=int(entry.get("input_size") or 256),
+                threshold=float(entry.get("threshold") or 0.5),
+                architecture=entry.get("architecture"),
+                encoder=entry.get("encoder"),
+                in_channels=int(entry.get("in_channels") or 1),
+                classes=int(entry.get("classes") or 1),
+            )
+        )
+    return specs, warnings
+
+
+def _ml_status_payload() -> dict:
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get(
+        "hydride_segmentation", {}
+    )
+    specs, warnings = _load_ml_specs()
+    deps_ok = ml_available()
+    if not deps_ok:
+        err = ml_import_error()
+        msg = "Torch CPU + segmentation_models_pytorch are not installed."
+        if err:
+            msg = f"{msg} ({err})"
+        warnings.append(msg)
+
+    root = resolve_models_root(current_app.config, settings, base_dir=_repo_root())
+    models_payload = []
+    any_available = False
+    for spec in specs:
+        path = resolve_model_path(root, spec.file)
+        exists = path.exists()
+        available = deps_ok and exists and not spec.placeholder
+        any_available = any_available or available
+        models_payload.append(
+            {
+                "id": spec.model_id,
+                "label": spec.label,
+                "available": available,
+                "input_size": spec.input_size,
+                "threshold": spec.threshold,
+                "missing": None
+                if available
+                else (
+                    "placeholder"
+                    if spec.placeholder
+                    else ("weights" if not exists else "deps")
+                ),
+            }
+        )
+
+    if specs and deps_ok and not any_available:
+        if any(spec.placeholder for spec in specs):
+            warnings.append("Configured ML models are placeholders; replace with real weights.")
+        else:
+            warnings.append("No configured ML model weights were found on disk.")
+    if not specs:
+        warnings.append("No ML models configured.")
+
+    default_id = settings.get("default_ml_model_id")
+    if not default_id and specs:
+        default_id = specs[0].model_id
+
+    return {
+        "ml_available": deps_ok and any_available,
+        "ml_models": models_payload,
+        "default_ml_model_id": default_id,
+        "warnings": warnings,
+    }
+
+
+def _resolve_ml_model(model_id: str | None) -> tuple[MlModelSpec, Path]:
+    settings = current_app.config.get("PLUGIN_SETTINGS", {}).get(
+        "hydride_segmentation", {}
+    )
+    specs, warnings = _load_ml_specs()
+    if not ml_available():
+        msg = "Torch CPU + segmentation_models_pytorch are required for ML segmentation."
+        err = ml_import_error()
+        if err:
+            msg = f"{msg} ({err})"
+        raise AppError(message=msg, code="hydride.ml_unavailable", status_code=503)
+    if not specs:
+        detail = warnings[0] if warnings else "No ML models configured."
+        raise AppError(
+            message=detail, code="hydride.ml_not_configured", status_code=503
+        )
+
+    default_id = settings.get("default_ml_model_id")
+    if not default_id:
+        default_id = specs[0].model_id
+    selected_id = model_id or default_id
+    spec = next((item for item in specs if item.model_id == selected_id), None)
+    if spec is None:
+        raise ValidationAppError(
+            message="Unknown ML model selected",
+            code="hydride.invalid_model_id",
+            details={"model_id": selected_id},
+        )
+    if spec.placeholder:
+        raise AppError(
+            message="Selected ML model is a placeholder; replace with real weights.",
+            code="hydride.model_placeholder",
+            status_code=503,
+        )
+
+    root = resolve_models_root(current_app.config, settings, base_dir=_repo_root())
+    weights_path = resolve_model_path(root, spec.file)
+    if not weights_path.exists():
+        raise NotFoundAppError(
+            message="ML model weights not found",
+            code="hydride.model_missing",
+            details={"model_id": spec.model_id},
+        )
+    return spec, weights_path
+
+
 def _serialize_output(result: SegmentationOutput, model: str) -> dict:
     input_img = Image.fromarray(result.input_image)
     mask_img = Image.fromarray(result.mask)
@@ -145,8 +293,6 @@ def _serialize_output(result: SegmentationOutput, model: str) -> dict:
     analysis_payload["combined_panel_png_b64"] = image_to_png_base64(combined)
 
     logs = list(result.logs)
-    if model == "ml":
-        logs.insert(0, "ML backend routed to conventional pipeline for offline parity")
 
     return {
         "input_png_b64": image_to_png_base64(input_img.convert("RGB")),
@@ -160,6 +306,11 @@ def _serialize_output(result: SegmentationOutput, model: str) -> dict:
 api_bp = Blueprint(
     "hydride_segmentation_api", __name__, url_prefix="/api/hydride_segmentation"
 )
+
+
+@api_bp.get("/config")
+def config() -> Response:
+    return ok(_ml_status_payload())
 
 
 @api_bp.post("/segment")
@@ -204,7 +355,32 @@ def segment() -> Response:
             )
         )
 
-    result = segment_conventional(image, params)
+    ml_spec: MlModelSpec | None = None
+    if model == "ml":
+        try:
+            ml_spec, weights_path = _resolve_ml_model(request.form.get("ml_model_id"))
+            result = segment_ml(image, ml_spec, weights_path=weights_path)
+        except (MlUnavailableError, MlModelError) as exc:
+            return fail(
+                AppError(
+                    message=str(exc),
+                    code="hydride.ml_failed",
+                    status_code=503,
+                )
+            )
+        except AppError as exc:
+            return fail(exc)
+        except Exception as exc:
+            return fail(
+                InternalAppError(
+                    message="ML segmentation failed to run",
+                    code="hydride.ml_error",
+                    details={"detail": repr(exc)},
+                )
+            )
+    else:
+        result = segment_conventional(image, params)
+
     metrics = compute_metrics(result.mask)
     payload = _serialize_output(result, model)
     payload["metrics"] = {
@@ -215,6 +391,9 @@ def segment() -> Response:
         "model": model,
         "conventional": asdict(params),
     }
+    if model == "ml" and ml_spec is not None:
+        payload["parameters"]["ml_model_id"] = ml_spec.model_id
+        payload["parameters"]["ml_model_label"] = ml_spec.label
     return ok(payload)
 
 
@@ -226,4 +405,4 @@ def warmup() -> Response:
 blueprints = [api_bp]
 
 
-__all__ = ["blueprints", "segment", "warmup"]
+__all__ = ["blueprints", "segment", "warmup", "config"]

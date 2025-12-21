@@ -35,16 +35,17 @@ export default function PdfToolsPage() {
                 Read PDF guide
               </a>
             }
+            footer={null}
           />
         }
         workspace={
-          <div className="tool-shell__workspace">
-            <div className="pdf-tabs" role="tablist" aria-label="PDF tools">
+          <div className="pdf-workspace-wrapper">
+            <div className="pdf-tabs" role="tablist">
               <button
                 type="button"
                 role="tab"
                 aria-selected={activeTab === "merge"}
-                className={`pdf-tab ${activeTab === "merge" ? "is-active" : ""}`}
+                className={activeTab === "merge" ? "is-active" : ""}
                 onClick={() => setActiveTab("merge")}
               >
                 Merge
@@ -53,7 +54,7 @@ export default function PdfToolsPage() {
                 type="button"
                 role="tab"
                 aria-selected={activeTab === "split"}
-                className={`pdf-tab ${activeTab === "split" ? "is-active" : ""}`}
+                className={activeTab === "split" ? "is-active" : ""}
                 onClick={() => setActiveTab("split")}
               >
                 Split
@@ -62,20 +63,22 @@ export default function PdfToolsPage() {
                 type="button"
                 role="tab"
                 aria-selected={activeTab === "stitch"}
-                className={`pdf-tab ${activeTab === "stitch" ? "is-active" : ""}`}
+                className={activeTab === "stitch" ? "is-active" : ""}
                 onClick={() => setActiveTab("stitch")}
               >
                 Stitch
               </button>
             </div>
-            <div role="tabpanel" hidden={activeTab !== "merge"}>
-              {activeTab === "merge" && <MergePanel />}
-            </div>
-            <div role="tabpanel" hidden={activeTab !== "split"}>
-              {activeTab === "split" && <SplitPanel />}
-            </div>
-            <div role="tabpanel" hidden={activeTab !== "stitch"}>
-              {activeTab === "stitch" && <StitchPanel />}
+            <div className="tool-shell__workspace">
+              <div role="tabpanel" hidden={activeTab !== "merge"}>
+                {activeTab === "merge" && <MergePanel />}
+              </div>
+              <div role="tabpanel" hidden={activeTab !== "split"}>
+                {activeTab === "split" && <SplitPanel />}
+              </div>
+              <div role="tabpanel" hidden={activeTab !== "stitch"}>
+                {activeTab === "stitch" && <StitchPanel />}
+              </div>
             </div>
           </div>
         }

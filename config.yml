@@ -13,6 +13,9 @@ site:
       color_scheme: "light"
   max_content_length_mb: 2048
   help_overview: "/help/overview"
+model_store:
+  root: "model_store"
+  env: "ML_SERVER_MODEL_STORE"
 plugins:
   hydride_segmentation:
     docs: "/help/hydride_segmentation"
@@ -20,6 +23,15 @@ plugins:
     upload:
       max_files: 1
       max_mb: 5
+    models_root_env: "HYDRIDE_MODEL_PATH"
+    default_ml_model_id: "hydride_unet_256_gray_placeholder"
+    models:
+      - id: "hydride_unet_256_gray_placeholder"
+        label: "Hydride UNet 256 (grayscale, placeholder)"
+        file: "hydride_segmentation/hydride_unet_256_gray_placeholder.pth"
+        placeholder: true
+        input_size: 256
+        threshold: 0.5
   pdf_tools:
     docs: "/help/pdf_tools"
     summary: "Merge, split, and organise PDF packets entirely offline."

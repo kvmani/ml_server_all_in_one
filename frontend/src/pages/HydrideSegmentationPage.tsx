@@ -33,6 +33,22 @@ type SegmentationResult = {
   parameters: Record<string, unknown>;
 };
 
+type MlModelOption = {
+  id: string;
+  label: string;
+  available: boolean;
+  input_size?: number;
+  threshold?: number;
+  missing?: string | null;
+};
+
+type MlConfigResponse = {
+  ml_available: boolean;
+  ml_models: MlModelOption[];
+  default_ml_model_id?: string | null;
+  warnings?: string[];
+};
+
 const SAMPLE_IMAGE = hydrideSample;
 
 const DEFAULTS = {
@@ -44,8 +60,8 @@ const DEFAULTS = {
   adaptive_offset: "40",
   morph_kernel_x: "5",
   morph_kernel_y: "5",
-  morph_iterations: "2",
-  area_threshold: "500",
+  morph_iterations: "0",
+  area_threshold: "95",
   crop_percent: "10",
   crop_enabled: false,
 };
@@ -99,6 +115,10 @@ export default function HydrideSegmentationPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>(SAMPLE_IMAGE);
   const [model, setModel] = useState<string>(preferences.defaultModel);
+  const [mlAvailable, setMlAvailable] = useState(false);
+  const [mlWarnings, setMlWarnings] = useState<string[]>([]);
+  const [mlModels, setMlModels] = useState<MlModelOption[]>([]);
+  const [mlModelId, setMlModelId] = useState<string>("");
   const [cropEnabled, setCropEnabled] = useState<boolean>(DEFAULTS.crop_enabled);
   const [cropPercent, setCropPercent] = useState<string>(DEFAULTS.crop_percent);
   const [brightness, setBrightness] = useState<number>(preferences.previewBrightness);
@@ -117,9 +137,43 @@ export default function HydrideSegmentationPage() {
   }, [preferences.defaultModel]);
 
   useEffect(() => {
+    let active = true;
+    apiFetch<MlConfigResponse>("/api/hydride_segmentation/config")
+      .then((payload) => {
+        if (!active) {
+          return;
+        }
+        const models = payload.ml_models || [];
+        setMlAvailable(Boolean(payload.ml_available));
+        setMlWarnings(payload.warnings || []);
+        setMlModels(models);
+        const fallbackId = payload.default_ml_model_id || models.find((item) => item.available)?.id || models[0]?.id || "";
+        setMlModelId(fallbackId);
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+        setMlAvailable(false);
+        setMlWarnings(["ML model configuration unavailable."]);
+        setMlModels([]);
+        setMlModelId("");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     setBrightness(preferences.previewBrightness);
     setContrast(preferences.previewContrast);
   }, [preferences.previewBrightness, preferences.previewContrast]);
+
+  useEffect(() => {
+    if (!mlAvailable && model === "ml") {
+      setModel("conventional");
+    }
+  }, [mlAvailable, model]);
 
   const settingsFields = useMemo<SettingsField[]>(
     () => [
@@ -129,7 +183,7 @@ export default function HydrideSegmentationPage() {
         type: "select",
         options: [
           { value: "conventional", label: "Conventional (parameterised)" },
-          { value: "ml", label: "ML proxy (auto)" },
+          { value: "ml", label: "ML segmentation (pretrained)" },
         ],
         description: "Applied whenever the workspace resets.",
       },
@@ -213,7 +267,7 @@ export default function HydrideSegmentationPage() {
   const handleModelChange = (value: string) => {
     setModel(value);
     if (value === "ml") {
-      status.setStatus("ML proxy uses tuned defaults", "info");
+      status.setStatus("ML model runs with pretrained weights and fixed preprocessing", "info");
     }
   };
 
@@ -223,8 +277,18 @@ export default function HydrideSegmentationPage() {
     setCropPercent(DEFAULTS.crop_percent);
     setBrightness(preferences.previewBrightness);
     setContrast(preferences.previewContrast);
+    if (mlModels.length) {
+      const fallback = mlModels.find((item) => item.available)?.id || mlModels[0]?.id || "";
+      setMlModelId(fallback);
+    }
     status.setStatus("Parameters reset to defaults", "info");
-  }, [preferences.defaultModel, preferences.previewBrightness, preferences.previewContrast, status]);
+  }, [
+    mlModels,
+    preferences.defaultModel,
+    preferences.previewBrightness,
+    preferences.previewContrast,
+    status,
+  ]);
 
   const clearResults = () => {
     setHistory([]);
@@ -245,6 +309,9 @@ export default function HydrideSegmentationPage() {
       formData.append("image", imageFile, imageFile.name);
       formData.set("model", model);
       formData.set("crop_percent", cropPercent || DEFAULTS.crop_percent);
+      if (model === "ml" && mlModelId) {
+        formData.set("ml_model_id", mlModelId);
+      }
       if (cropEnabled) {
         formData.set("crop_enabled", "on");
       } else {
@@ -413,9 +480,47 @@ export default function HydrideSegmentationPage() {
                 </label>
                 <select id="model" name="model" value={model} onChange={(event) => handleModelChange(event.target.value)}>
                   <option value="conventional">Conventional pipeline (parameterised)</option>
-                  <option value="ml">ML proxy (auto)</option>
+                  <option value="ml" disabled={!mlAvailable}>
+                    ML segmentation (pretrained)
+                  </option>
                 </select>
+                {mlWarnings.length > 0 ? (
+                  <p className="form-field__hint">{mlWarnings.join(" ")}</p>
+                ) : null}
               </div>
+              {model === "ml" ? (
+                <div className="form-field">
+                  <label className="form-field__label" htmlFor="ml_model_id">
+                    ML model
+                    <button
+                      type="button"
+                      className="tooltip-trigger"
+                      data-tooltip="Select which pretrained weight set to use for ML inference."
+                      aria-label="ML model help"
+                    >
+                      ?
+                    </button>
+                  </label>
+                  <select
+                    id="ml_model_id"
+                    name="ml_model_id"
+                    value={mlModelId}
+                    onChange={(event) => setMlModelId(event.target.value)}
+                    disabled={!mlModels.length}
+                  >
+                    {mlModels.length ? (
+                      mlModels.map((item) => (
+                        <option key={item.id} value={item.id} disabled={!item.available}>
+                          {item.label}
+                          {!item.available ? " (unavailable)" : ""}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No ML models configured</option>
+                    )}
+                  </select>
+                </div>
+              ) : null}
               <label className="form-field form-field--checkbox" htmlFor="crop-enabled">
                 <span className="form-field__label">Crop bottom edge before segmentation</span>
                 <div className="form-field__control">

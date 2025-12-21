@@ -142,15 +142,22 @@ const HELP_BUILDERS: Record<string, HelpBuilder> = {
       category: "Hydride analysis",
       title: "Hydride Segmentation guidance",
       subtitle:
-        "Segment zirconium alloy micrographs using the conventional pipeline with tunable preprocessing and thresholding options.",
+        "Segment zirconium alloy micrographs using conventional preprocessing or pretrained ML models with configurable weights.",
       sections: [
         {
           heading: "Workflow summary",
           ordered: [
             `Drop a PNG, JPEG, or TIFF image (max ${maxMb} MB) into the workspace.`,
-            "Select the Conventional backend to expose manual parameters or choose the ML proxy for auto defaults.",
+            "Select the Conventional backend to expose manual parameters or choose ML segmentation for pretrained weights.",
             "Tune CLAHE, adaptive threshold, and morphology settings as needed, then run segmentation.",
             "Review the generated mask, overlay, and analysis metrics. Use the history controls to compare successive runs.",
+          ],
+        },
+        {
+          heading: "ML model selection",
+          unordered: [
+            "Use the ML model dropdown to pick the weight set configured for this workstation.",
+            "ML options appear only when Torch (CPU) and segmentation-models-pytorch are installed and weights are available.",
           ],
         },
         {

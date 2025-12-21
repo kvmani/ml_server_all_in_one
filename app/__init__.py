@@ -120,6 +120,7 @@ def create_app(config_name: str | None = None) -> Flask:
     yaml_config = _load_yaml_config()
     site_settings = yaml_config.get("site", {})
     plugin_settings = yaml_config.get("plugins", {})
+    model_store = yaml_config.get("model_store", {})
 
     if site_settings:
         app.config["SITE_SETTINGS"] = site_settings
@@ -135,6 +136,7 @@ def create_app(config_name: str | None = None) -> Flask:
         app.config["SITE_SETTINGS"] = {}
 
     app.config["PLUGIN_SETTINGS"] = plugin_settings
+    app.config["MODEL_STORE"] = model_store
 
     if config_name:
         config_obj = getattr(config_module, config_name, None)

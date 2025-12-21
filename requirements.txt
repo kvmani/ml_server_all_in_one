@@ -21,3 +21,8 @@ orix
 
 # Optional CPU-only extras (install manually if you want Torch MLP in Tabular ML)
 # torch==2.4.1+cpu
+
+# Optional CPU-only extras (install manually for ML hydride segmentation)
+# torch==2.4.1+cpu
+# torchvision==0.19.1+cpu
+# segmentation-models-pytorch==0.3.3
