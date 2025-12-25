@@ -178,6 +178,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SuccessWarmup'
+  /api/v1/super_resolution/health:
+    get:
+      summary: Check super-resolution model health.
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessSuperResolutionHealth'
+  /api/v1/super_resolution/predict:
+    post:
+      summary: Upscale an image using Real-ESRGAN.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                scale:
+                  type: string
+                  enum: ['2', '4']
+                model:
+                  type: string
+                output_format:
+                  type: string
+                  enum: [png, jpg]
+              required:
+                - image
+      responses:
+        '200':
+          description: Upscaled image bytes.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '413':
+          $ref: '#/components/responses/ValidationError'
   /api/tabular_ml/datasets:
     post:
       summary: Register a new tabular dataset.
@@ -411,6 +459,22 @@ components:
                 status:
                   type: string
                   enum: [ready]
+    SuccessSuperResolutionHealth:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                status:
+                  type: string
+                model_loaded:
+                  type: boolean
+                model_name:
+                  type: string
+                device:
+                  type: string
     SuccessDatasetProfile:
       allOf:
         - $ref: '#/components/schemas/SuccessEnvelope'

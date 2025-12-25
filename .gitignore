@@ -11,4 +11,5 @@ model_store/
 old_codes/mlserver_all_in_one/
 *.pth
 *.pt
+models/super_resolution/weights/
 old_codes/

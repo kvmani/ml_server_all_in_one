@@ -182,6 +182,44 @@ const HELP_BUILDERS: Record<string, HelpBuilder> = {
       ],
     };
   },
+  super_resolution: ({ settings }) => {
+    const maxMb = Number((settings as Record<string, unknown>).max_upload_mb ?? 20);
+    const defaultScale = Number((settings as Record<string, unknown>).default_scale ?? 4);
+    const defaultModel = String((settings as Record<string, unknown>).default_model ?? "RealESRGAN_x4plus");
+    return {
+      category: "Image enhancement",
+      title: "Super-resolution guidance",
+      subtitle:
+        "Upscale microscopy and lab imagery with Real-ESRGAN, then compare improvements using the interactive before/after slider.",
+      sections: [
+        {
+          heading: "Workflow",
+          ordered: [
+            `Drop a PNG, JPG, or WEBP image (up to ${maxMb} MB).`,
+            `Select the scale (default ${defaultScale}x) and model (${defaultModel}).`,
+            "Run upscale to generate the enhanced output in memory.",
+            "Drag the divider or use arrow keys to compare original and upscaled results.",
+          ],
+        },
+        {
+          heading: "Output options",
+          unordered: [
+            "PNG preserves lossless detail for analysis and publication.",
+            "JPG compresses output for lighter downloads when fidelity is less critical.",
+            "Download is available immediately after processing completes.",
+          ],
+        },
+        {
+          heading: "Performance notes",
+          unordered: [
+            "GPU acceleration is used automatically when available and enabled in config.yml.",
+            "Large images may take longer to process; keep the tab open until the status reads complete.",
+            "No input data is written to disk, and closing the page clears the session.",
+          ],
+        },
+      ],
+    };
+  },
   tabular_ml: ({ settings }) => {
     const upload = (settings.upload as Record<string, unknown>) || {};
     const maxMb = Number(upload.max_mb ?? 2);
@@ -260,6 +298,9 @@ const HELP_BUILDERS: Record<string, HelpBuilder> = {
         const files = mergeUpload.max_files ?? 10;
         const mb = mergeUpload.max_mb ?? 5;
         hint = `Merge up to ${files} files (${mb} MB each).`;
+      } else if ((settings as Record<string, unknown>).max_upload_mb) {
+        const mb = (settings as Record<string, unknown>).max_upload_mb ?? 5;
+        hint = `Upload limit: ${mb} MB.`;
       }
       return {
         slug: manifest.blueprint,

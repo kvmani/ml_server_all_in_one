@@ -1,0 +1,226 @@
+.superres-shell {
+  margin-bottom: 3rem;
+}
+
+.superres-workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 1.75rem;
+  align-items: start;
+}
+
+.superres-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.superres-panel .dropzone {
+  min-height: 220px;
+}
+
+.superres-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.superres-sample {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.superres-sample img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--figure-image-background);
+}
+
+.superres-sample__title {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
+.superres-sample__hint {
+  margin: 0 0 0.75rem;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.superres-controls {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.superres-meta {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.superres-meta span {
+  color: var(--color-muted);
+}
+
+.superres-preview {
+  background: var(--figure-background);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  min-height: 360px;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.superres-preview__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.superres-preview__title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.superres-preview__caption {
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.before-after {
+  position: relative;
+  width: 100%;
+  min-height: 280px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--figure-image-background);
+  border: 1px solid var(--color-border);
+  display: grid;
+  align-items: center;
+  cursor: ew-resize;
+}
+
+.before-after.is-disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.before-after__image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  user-select: none;
+  pointer-events: none;
+}
+
+.before-after__overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+}
+
+.before-after__handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.before-after__line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-primary);
+  box-shadow: 0 0 18px rgba(99, 213, 255, 0.4);
+}
+
+.before-after__knob {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-primary);
+  font-weight: 600;
+  font-size: 0.9rem;
+  box-shadow: var(--shadow-sm);
+  cursor: ew-resize;
+}
+
+.before-after__handle[role="slider"]:focus-visible .before-after__knob {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 4px;
+}
+
+.before-after__label {
+  position: absolute;
+  top: 1rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: rgba(17, 28, 51, 0.7);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.before-after__label--left {
+  left: 1rem;
+}
+
+.before-after__label--right {
+  right: 1rem;
+}
+
+.superres-placeholder {
+  text-align: center;
+  color: var(--color-muted);
+  padding: 2.5rem 1rem;
+}
+
+.superres-placeholder strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+@media (max-width: 1024px) {
+  .superres-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .superres-preview {
+    padding: 1.25rem;
+  }
+
+  .superres-sample {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .superres-sample img {
+    margin: 0 auto;
+  }
+}

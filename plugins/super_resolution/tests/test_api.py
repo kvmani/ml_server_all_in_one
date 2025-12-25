@@ -1,13 +1,27 @@
-import base64
 from io import BytesIO
 
 from PIL import Image
 
 from app import create_app
+from plugins.super_resolution.core import UpscaleResult
+from plugins.super_resolution import api as api_module
 
 
 def _make_client():
     app = create_app("TestingConfig")
+    app.config["PLUGIN_SETTINGS"]["super_resolution"] = {
+        "enabled": True,
+        "device": "cpu",
+        "max_upload_mb": 1,
+        "default_scale": 2,
+        "default_model": "RealESRGAN_x2plus",
+        "models": {
+            "RealESRGAN_x2plus": {
+                "weights_path": "models/super_resolution/weights/RealESRGAN_x2plus.pth",
+                "scale": 2,
+            }
+        },
+    }
     return app.test_client()
 
 
@@ -17,51 +31,43 @@ def _sample_png() -> bytes:
     return buffer.getvalue()
 
 
-def test_enhance_endpoint_returns_upscaled_image():
+def test_health_endpoint_reports_status():
     client = _make_client()
-    data = {
-        "scale": "1.5",
-        "mode": "bicubic",
-        "image": (BytesIO(_sample_png()), "sample.png"),
-    }
-    response = client.post(
-        "/api/super_resolution/enhance", data=data, content_type="multipart/form-data"
-    )
+    response = client.get("/api/v1/super_resolution/health")
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["success"] is True
-    result = payload["data"]
-    assert result["scale"] == 1.5
-    assert result["width"] == 15
-    assert result["height"] == 15
-    image_bytes = base64.b64decode(result["image_base64"])
-    assert image_bytes.startswith(b"\x89PNG")
+    data = payload["data"]
+    assert data["status"] == "ok"
+    assert data["model_name"] == "RealESRGAN_x2plus"
+    assert data["device"] in {"cpu", "cuda"}
 
 
-def test_enhance_endpoint_rejects_invalid_scale():
+def test_predict_endpoint_returns_image(monkeypatch):
     client = _make_client()
+    output_buffer = BytesIO()
+    Image.new("RGB", (4, 4), color=(10, 20, 30)).save(output_buffer, format="PNG")
+    output_bytes = output_buffer.getvalue()
+
+    def _fake_upscale(*_args, **_kwargs):
+        return UpscaleResult(
+            image_bytes=output_bytes,
+            width=4,
+            height=4,
+            scale=2,
+            output_format="png",
+        )
+
+    monkeypatch.setattr(api_module, "upscale_image", _fake_upscale)
     data = {
-        "scale": "not-a-number",
+        "scale": "2",
+        "model": "RealESRGAN_x2plus",
+        "output_format": "png",
         "image": (BytesIO(_sample_png()), "sample.png"),
     }
     response = client.post(
-        "/api/super_resolution/enhance", data=data, content_type="multipart/form-data"
+        "/api/v1/super_resolution/predict", data=data, content_type="multipart/form-data"
     )
-    assert response.status_code == 400
-    payload = response.get_json()
-    assert payload["success"] is False
-    assert "scale" in payload["error"]["message"].lower()
-
-
-def test_enhance_endpoint_validates_mime():
-    client = _make_client()
-    data = {
-        "image": (BytesIO(b"not an image"), "sample.txt"),
-    }
-    response = client.post(
-        "/api/super_resolution/enhance", data=data, content_type="multipart/form-data"
-    )
-    assert response.status_code == 400
-    payload = response.get_json()
-    assert payload["success"] is False
-    assert "upload" in payload["error"]["code"]
+    assert response.status_code == 200
+    assert response.mimetype == "image/png"
+    assert response.data.startswith(b"\x89PNG")

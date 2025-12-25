@@ -4,6 +4,7 @@ import hydrideIcon from "../assets/hydride_icon.svg";
 import pdfToolsIcon from "../assets/pdf_tools_icon.png";
 import tabularIcon from "../assets/tabular_icon.svg";
 import unitConverterIcon from "../assets/unit_converter_icon.png";
+import superResolutionIcon from "../assets/super_resolution_icon.svg";
 import type { PluginManifest } from "../types";
 import { useAppContext } from "../contexts/AppContext";
 
@@ -12,6 +13,7 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   "Document Utilities": "Fast, offline-safe document manipulation with drag-and-drop simplicity.",
   "Machine Learning": "In-browser model training pipelines optimised for tabular datasets.",
   "General Utilities": "Everyday laboratory helpers with instant validation and clarity.",
+  "Image Enhancement": "Upscale and refine imaging outputs with offline-ready enhancement models.",
 };
 
 const ICON_MAP: Record<string, string> = {
@@ -21,6 +23,7 @@ const ICON_MAP: Record<string, string> = {
   tabular_ml: tabularIcon,
   unit_converter: unitConverterIcon,
   crystallographic_tools: pdfToolsIcon,
+  super_resolution: superResolutionIcon,
 };
 
 function normaliseCategory(category?: string | null) {

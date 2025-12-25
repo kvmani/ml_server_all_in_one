@@ -54,7 +54,18 @@ plugins:
     docs: "/help/scientific_calculator"
     summary: "Evaluate expressions with degree/radian modes and plot 1D/2D functions offline."
   super_resolution:
-    summary: "Upscale microscopy imagery offline with configurable resampling."
-    upload:
-      max_files: 1
-      max_mb: 8
+    docs: "/help/super_resolution"
+    summary: "Upscale microscopy imagery offline with Real-ESRGAN enhancement."
+    enabled: true
+    device: "auto"
+    max_upload_mb: 20
+    default_scale: 4
+    default_model: "RealESRGAN_x4plus"
+    weights_dir: "models/super_resolution/weights"
+    models:
+      RealESRGAN_x4plus:
+        weights_path: "models/super_resolution/weights/RealESRGAN_x4plus.pth"
+        scale: 4
+      RealESRGAN_x2plus:
+        weights_path: "models/super_resolution/weights/RealESRGAN_x2plus.pth"
+        scale: 2

@@ -111,6 +111,9 @@ def _matches_signature(sample: bytes, allowed: set[str]) -> bool:
         if signatures:
             if any(sample.startswith(signature) for signature in signatures):
                 return True
+        elif mime == "image/webp":
+            if len(sample) >= 12 and sample[:4] == b"RIFF" and sample[8:12] == b"WEBP":
+                return True
         elif mime in {"text/csv", "application/vnd.ms-excel"}:
             if _looks_like_csv(sample):
                 return True

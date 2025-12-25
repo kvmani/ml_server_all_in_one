@@ -12,6 +12,7 @@ An offline-first Flask platform bundling microstructure analysis, PDF workflows,
 | **Tabular ML** | Upload CSV datasets (≤2 MB), preview rows, build scatter plots, auto-detect regression vs. classification, and train CPU-only models (Random Forest, Gradient Boosting, SVM, Extra Trees, sklearn MLP, optional Torch MLP if installed) with importances. |
 | **Unit Converter** | Convert between engineering units with Pint-backed accuracy, interval-aware temperature deltas, expression evaluation, and configurable precision. |
 | **Scientific Calculator** | Evaluate expressions in degree/radian modes with allowlisted math functions and plot 1D/2D functions safely offline. |
+| **Super Resolution** | Upscale microscopy imagery with Real-ESRGAN, compare before/after outputs with a slider, and download PNG/JPG results without leaving the workstation. |
 | **Global Activity Log** | Persistent, non-invasive footer console that surfaces upload status, validation warnings, and task progress across every tool in real time. |
 
 Browse in-app help for each workspace via the header **Help** link or jump directly:
@@ -21,6 +22,7 @@ Browse in-app help for each workspace via the header **Help** link or jump direc
 - `/help/pdf_tools`
 - `/help/tabular_ml`
 - `/help/unit_converter`
+- `/help/super_resolution`
 
 ## User guide
 
@@ -30,6 +32,7 @@ Browse in-app help for each workspace via the header **Help** link or jump direc
 - **Unit Converter** – Choose a measurement family, enter a numeric value (scientific notation allowed), pick source/destination units, and copy the four-decimal result. Use **Reset** when switching categories.
 - **Scientific Calculator** – Enter an expression with operators/functions (sin/cos/tan/log/exp/sqrt/sinc/etc.), pick angle mode (radian/degree), and evaluate to see both the numeric result and a canonical parenthesized rendering. Switch to the plot tab to define up to two variables with ranges/steps, optional constants, and fetch either a 1D series or 2D surface grid for charting.
 - **Crystallographic Tools** – Load a CIF, adjust lattice parameters or sites, and download the edited CIF. For diffraction, choose an XRD radiation type and 2θ window to return peak tables; for SAED/TEM, set accelerating voltage and camera length to compute spot positions and intensities. All calculations are in-memory and offline.
+- **Super Resolution** – Drop a PNG/JPG/WEBP image, choose 2x or 4x enhancement, run the Real-ESRGAN pipeline, compare with the before/after slider, and download a PNG or JPG result.
 
 ### Unified activity window
 
@@ -105,6 +108,20 @@ ons.
      - Global upload ceiling (`site.max_content_length_mb`)
      - Per-plugin limits (e.g., `plugins.pdf_tools.merge_upload.max_mb`)
      - Documentation links (`plugins.<tool>.docs`)
+
+5a. **Super-resolution weights** (required for the Super Resolution tool)
+
+   ```bash
+   python scripts/setup_super_resolution_weights.py --download
+   ```
+
+   If your environment is air-gapped, copy the `.pth` files locally and run:
+
+   ```bash
+   python scripts/setup_super_resolution_weights.py --source /path/to/weights_dir
+   ```
+
+   Real-ESRGAN also requires a PyTorch install that matches your hardware (CPU or CUDA).
 
 6. **Run the development servers**
 

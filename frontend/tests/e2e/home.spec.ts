@@ -9,7 +9,7 @@ test.describe("Home page discovery", () => {
     await expect(page.getByRole("navigation", { name: "Primary" })).toContainText("PDF toolkit workspace");
 
     const cards = page.locator("[data-tool-card]");
-    await expect(cards).toHaveCount(4);
+    await expect(cards).toHaveCount(7);
 
     await page.locator("[data-tool-search]").fill("hydride");
     await expect(cards).toHaveCount(1);
@@ -21,7 +21,7 @@ test.describe("Home page discovery", () => {
     await expect(cards.first()).toContainText("PDF toolkit workspace");
 
     await page.locator("button[data-tool-category='all']").click();
-    await expect(cards).toHaveCount(4);
+    await expect(cards).toHaveCount(7);
 
     await cards.filter({ hasText: "Tabular ML studio" }).getByRole("button", { name: "Quick view" }).click();
     const preview = page.locator("[data-tool-preview-title]");

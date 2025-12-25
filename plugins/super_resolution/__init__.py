@@ -2,10 +2,10 @@
 
 manifest = {
     "title": "Super Resolution",
-    "summary": "Upscale microscopy imagery using offline resampling with enhanced detail.",
+    "summary": "Upscale microscopy and lab imagery with Real-ESRGAN enhancement offline.",
     "blueprint": "super_resolution",
-    "category": "Microstructural Analysis",
-    "icon": None,
+    "category": "Image Enhancement",
+    "icon": "img/super_resolution_icon.svg",
 }
 
 

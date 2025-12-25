@@ -13,6 +13,7 @@ import PdfToolsPage from "./pages/PdfToolsPage";
 import TabularMlPage from "./pages/TabularMlPage";
 import UnitConverterPage from "./pages/UnitConverterPage";
 import ScientificCalculatorPage from "./pages/ScientificCalculatorPage";
+import SuperResolutionPage from "./pages/SuperResolutionPage";
 
 function AppContent() {
   const { currentTheme } = useAppContext();
@@ -35,6 +36,8 @@ function AppContent() {
         <Route path="/tabular_ml/*" element={<Navigate to="/tools/tabular_ml" replace />} />
         <Route path="/tools/scientific_calculator" element={<ScientificCalculatorPage />} />
         <Route path="/scientific_calculator/*" element={<Navigate to="/tools/scientific_calculator" replace />} />
+        <Route path="/tools/super_resolution" element={<SuperResolutionPage />} />
+        <Route path="/super_resolution/*" element={<Navigate to="/tools/super_resolution" replace />} />
         <Route path="/help/:slug" element={<HelpPage />} />
         <Route path="*" element={<ErrorPage status={404} title="Page not found" message="The requested route does not exist." />} />
       </Routes>
