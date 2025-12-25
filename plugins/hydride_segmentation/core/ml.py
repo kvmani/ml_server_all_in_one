@@ -93,12 +93,15 @@ def get_model(weights_path: Path, spec: MlModelSpec) -> "torch.nn.Module":
 
 
 def _prepare_input(image: np.ndarray, input_size: int) -> tuple[np.ndarray, Image.Image]:
+    if input_size <= 0:
+        raise ValueError("input_size must be a positive integer")
     pil = Image.fromarray(image)
     if input_size and (pil.width != input_size or pil.height != input_size):
         resized = pil.resize((input_size, input_size), Image.BILINEAR)
     else:
         resized = pil
     arr = np.asarray(resized, dtype=np.float32) / 255.0
+    arr = np.clip(arr, 0.0, 1.0)
     return arr, resized
 
 
@@ -129,7 +132,7 @@ def segment_ml(
     if mask.shape != image.shape:
         mask = np.array(
             Image.fromarray(mask).resize((image.shape[1], image.shape[0]), Image.NEAREST)
-        )
+        ).astype(np.uint8)
 
     overlay = np.stack([image] * 3, axis=-1)
     edges = morphology.binary_dilation(mask > 0) ^ (mask > 0)
@@ -137,6 +140,7 @@ def segment_ml(
 
     logs = [
         f"ML model: {spec.label}",
+        f"Original size: {image.shape[1]}x{image.shape[0]}",
         f"Input resized to {resized.width}x{resized.height}",
         f"Threshold: {spec.threshold}",
     ]
