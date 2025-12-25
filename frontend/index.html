@@ -41,12 +41,28 @@
               docs: "/help/unit_converter",
             },
             {
+              blueprint: "scientific_calculator",
+              title: "Scientific calculator",
+              summary: "Evaluate expressions, toggle radian/degree, and plot 1D/2D functions offline.",
+              category: "General Utilities",
+              tags: ["calculator", "plot", "math"],
+              docs: "/help/scientific_calculator",
+            },
+            {
               blueprint: "hydride_segmentation",
               title: "Hydride segmentation workstation",
               summary: "Analyse zirconium microscopy images with tunable pipelines.",
               category: "Microstructural Analysis",
               tags: ["microscopy", "segmentation"],
               docs: "/help/hydride_segmentation",
+            },
+            {
+              blueprint: "super_resolution",
+              title: "Super-resolution workspace",
+              summary: "Upscale microscopy and lab imagery with Real-ESRGAN enhancement offline.",
+              category: "Image Enhancement",
+              tags: ["upscale", "image", "microscopy"],
+              docs: "/help/super_resolution",
             },
             {
               blueprint: "tabular_ml",
@@ -162,6 +178,30 @@
               helpHref: "/help/tabular_ml",
               upload: { max_mb: 3 },
             },
+          },
+          "/tools/scientific_calculator": {
+            page: "scientific_calculator",
+            props: { helpHref: "/help/scientific_calculator" },
+          },
+          "/scientific_calculator": {
+            page: "scientific_calculator",
+            props: { helpHref: "/help/scientific_calculator" },
+          },
+          "/scientific_calculator/": {
+            page: "scientific_calculator",
+            props: { helpHref: "/help/scientific_calculator" },
+          },
+          "/tools/super_resolution": {
+            page: "super_resolution",
+            props: { helpHref: "/help/super_resolution" },
+          },
+          "/super_resolution": {
+            page: "super_resolution",
+            props: { helpHref: "/help/super_resolution" },
+          },
+          "/super_resolution/": {
+            page: "super_resolution",
+            props: { helpHref: "/help/super_resolution" },
           },
           "/tools/crystallographic_tools": {
             page: "crystallographic_tools",

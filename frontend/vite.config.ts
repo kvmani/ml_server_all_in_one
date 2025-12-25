@@ -8,7 +8,7 @@ export default defineConfig({
   base: "/static/react/",
   server: {
     proxy: {
-      "/api": "http://localhost:5001",
+      "/api": `http://localhost:${process.env.ML_SERVER_AIO_PORT ?? "5001"}`,
     },
   },
   build: {

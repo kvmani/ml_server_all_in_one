@@ -31,7 +31,8 @@ The application factory (`app/__init__.py`) loads `config.yml` at startup, expos
    python scripts/run_dev.py
    ```
 
-   Visit `http://localhost:5000/?theme=midnight` (or another theme key from `config.yml`).
+   Visit `http://localhost:5001/?theme=midnight` (or another theme key from `config.yml`).
+   Set `ML_SERVER_AIO_PORT` if you need a different Flask port.
 
 3. Run the test suite before committing:
 

@@ -139,7 +139,8 @@ ons.
    npm run dev -- --host
    ```
 
-   Visit `http://localhost:5173/?theme=<theme-key>` while the Vite dev server is running. API calls are automatically proxied to the Flask app at `http://localhost:5000`.
+   Visit `http://localhost:5173/?theme=<theme-key>` while the Vite dev server is running. API calls are automatically proxied to the Flask app at `http://localhost:5001`.
+   Set `ML_SERVER_AIO_PORT` in both terminals if you need a different Flask port (for example, `ML_SERVER_AIO_PORT=5002`).
 
 7. **Execute backend tests**
 
@@ -218,7 +219,7 @@ ons.
    python scripts/run_dev.py
    ```
 
-4. Forward port 5000 in the Codespaces UI. The activity log appears once you upload a sample file—helpful when verifying that transfers never leave the Codespace sandbox.
+4. Forward port 5001 in the Codespaces UI. The activity log appears once you upload a sample file—helpful when verifying that transfers never leave the Codespace sandbox.
 
 ### Windows (PowerShell)
 
