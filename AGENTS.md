@@ -1,4 +1,58 @@
-# AGENTS.md — Engineering Playbook for **ML Server All‑In‑One (AIO)**
+# AGENTS.md — ML Server All‑In‑One (AIO) — **legacy repository**
+
+> **Status: legacy, superseded.** This monorepo was the first all-in-one platform. Its tools now live
+> in dedicated repositories that are developed and released independently: the portal
+> `kvmani/ml_server`, `kvmani/pdf_tools`, `kvmani/tabular_ml`, `kvmani/scientific_calculator`,
+> `kvmani/unit_converter`, `kvmani/pytex` (crystallography), `Pushpalathadevi/HydrideSegmentation`,
+> and the suite installer `kvmani/ml_server_deploy`. Do **not** add new features here; build them in
+> the owning repository. Make changes here only when the owner asks (for example to keep a
+> reference implementation runnable), and keep them minimal.
+>
+> This file is the operating contract for every coding agent (Codex, Claude, Gemini, …) and human
+> contributor. The cardinal rules below come first; the original engineering playbook that
+> follows remains the reference for this codebase's architecture and conventions, and the plugin
+> files `plugins/*/AGENTS.md` add plugin-specific rules.
+
+## Cardinal rules (owner-mandated, every repository)
+
+1. **Fetch before you change anything.** Start every task with
+   `git fetch origin && git pull --rebase --autostash origin main`. Several people and agents push
+   to this repository; never build on a stale checkout.
+2. **Work on `main` only.** Commit and push directly to `main` unless the owner names another
+   branch for the task. No feature branches or pull requests by default. Fetch again before
+   pushing; if the push is rejected, `git pull --rebase origin main`, rerun the affected tests,
+   then push. Never force-push or rewrite published history.
+3. **Keep the progress ledger current:** [`docs/PROGRESS.md`](docs/PROGRESS.md). Before coding, add (or claim)
+   the task entry: goal, plan, who is working on it, date. After each meaningful step record what
+   was done, the commit, test evidence, decisions, blockers and the next step. Commit the ledger
+   with the work it describes. A new session must be able to resume from the ledger and git
+   history alone, without the chat that started the work.
+4. **Targeted tests for ordinary changes.** Run only the tests that cover what you touched (see
+   [Tests](#tests)). Run the full suite only when preparing a release or when the owner asks.
+5. **CI runs only on request.** GitHub Actions workflows start by `workflow_dispatch` only;
+   tag-triggered release workflows are the single exception. Never add push, pull-request or
+   schedule triggers, and never start a workflow unless the owner asks.
+6. **Be honest.** Never report a check as passed unless you ran it and saw it pass; record skipped
+   checks and the reason. Never weaken, skip or delete a test to make it pass.
+7. **Keep git clean.** Commit sources and canonical assets only: no secrets, real personal data,
+   virtual environments, caches, logs or build output.
+
+The cardinal rules decide *how work is done* (sync, branch, ledger, test scope, CI). The project
+rules in this file decide *what this repository must achieve and protect*; nothing generic here
+relaxes them. If a project rule and a cardinal rule genuinely conflict, stop and ask the owner.
+
+## Tests (targeted by default)
+
+```bash
+pytest -q plugins/<tool>/tests            # backend change in one plugin
+pytest -q tests                           # shared app/common code
+(cd frontend && npm test)                 # frontend change
+pytest -q                                 # full suite: release or on request
+```
+
+---
+
+# Original engineering playbook
 
 > **MANDATE FOR AGENTS**  
 > Build an **air‑gapped, privacy‑first**, single‑repo web platform that serves ML utilities (Hydride Segmentation, PDF Tools, Unit Converter, Tabular ML, etc.) with a **uniform backend + frontend** in one codebase. **No external calls**, **in‑memory processing**, **cross‑browser (Chrome/Firefox/Edge)**.  
@@ -186,10 +240,10 @@ Errors: 400 (validation), 413 (too large), 500 (internal sanitized)
 
 ---
 
-## 11) Acceptance Checklist (Self‑Verify Before PR)
+## 11) Acceptance Checklist (Self‑Verify Before Pushing; the full list before a release)
 
 - [ ] Builds offline: `conda env create -f environment.yml` (only internal mirrors)
-- [ ] `pytest` all green; coverage report >= 80% for `core/`
+- [ ] Targeted `pytest` for the touched plugin green; before a release, full `pytest` green with coverage >= 80% for `core/`
 - [ ] `flask run` serves SPA shell and APIs; no Jinja tool pages remain
 - [ ] All endpoints enforce size/time limits; return correct HTTP codes
 - [ ] No network calls; CSP + headers audited
@@ -204,9 +258,9 @@ Errors: 400 (validation), 413 (too large), 500 (internal sanitized)
 
 ## 12) Commit, Branch & PR Rules
 
-- **Branches**: `main` (stable), `dev` (integration), `feature/<tool>-<feat>`
+- **Branches**: work directly on `main` (cardinal rule 2 above); no `dev` or feature branches unless the owner asks for one.
 - **Commits**: Conventional commits (`feat:`, `fix:`, `docs:`...). State privacy impact if any.
-- **PR Template** must include:
+- **Change record** (in the commit body and `docs/PROGRESS.md`; a pull request only when the owner asks for one) includes:
   - Checklist from §11
   - Screenshots/GIFs of UI (or deterministic text artifact summary)
   - Test plan + performance notes
@@ -278,7 +332,7 @@ Constraints:
 - Backward compatibility expectations
 
 Artifacts:
-- PR(s) with screenshots, test logs, updated docs
+- Commits on `main` with test logs, updated docs and (for UI) screenshots kept out of git
 ```
 
 ---
